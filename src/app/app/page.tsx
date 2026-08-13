@@ -1,12 +1,18 @@
-import { supabase } from '@/src/lib/supabaseClient'
+"use client"
+import dynamic from 'next/dynamic'
+import { useAppSession } from '../../lib/AppSessionContext'
 
-export default async function AppPage() {
-  // This is a simple placeholder. We'll rely on client-side auth checks later.
+const WorkspaceList = dynamic(() => import('../../components/WorkspaceList'), { ssr: false })
+
+export default function AppPage() {
+  const { userId } = useAppSession()
+
   return (
-    <main className="max-w-5xl mx-auto p-8">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
-      <p className="mt-4">Painel do Revollution Idea — aqui aparecerão seus workspaces e boards.</p>
-      <p className="mt-6">Próximo: integrar auth, criar workspaces e boards.</p>
-    </main>
+    <div className="mx-auto max-w-6xl px-6 py-10">
+      <h1 className="text-2xl font-semibold tracking-tight text-primary">Seus workspaces</h1>
+      <p className="mt-1 text-sm text-muted-foreground">Boards e times que você administra ou dos quais participa.</p>
+
+      <div className="mt-8">{userId && <WorkspaceList userId={userId} />}</div>
+    </div>
   )
 }

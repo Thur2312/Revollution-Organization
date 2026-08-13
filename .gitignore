@@ -6,3 +6,8 @@ dist
 coverage
 /.idea
 /.vscode
+
+# Supabase
+supabase/.branches/
+supabase/.temp/
+supabase/types.generated.ts
