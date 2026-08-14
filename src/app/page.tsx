@@ -201,7 +201,7 @@ export default function Home() {
 
       <Seam />
 
-      <section className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-24 md:grid-cols-[1fr_1.1fr]">
+      <section className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-16 md:py-24 md:grid-cols-[1fr_1.1fr]">
         <Reveal>
           <DragCue />
         </Reveal>
@@ -222,7 +222,7 @@ export default function Home() {
 
       <Seam />
 
-      <section className="mx-auto max-w-6xl px-6 py-24">
+      <section className="mx-auto max-w-6xl px-6 py-16 md:py-24">
         <Reveal>
           <h2
             className="max-w-md font-[family-name:var(--font-display)] text-2xl font-medium leading-snug md:text-3xl"
@@ -257,7 +257,7 @@ export default function Home() {
 
       <Seam />
 
-      <section className="mx-auto max-w-6xl px-6 py-24">
+      <section className="mx-auto max-w-6xl px-6 py-16 md:py-24">
         <Reveal>
           <h2
             className="max-w-lg font-[family-name:var(--font-display)] text-2xl font-medium leading-snug md:text-3xl"
