@@ -164,7 +164,7 @@ export default function Home() {
         </Link>
       </header>
 
-      <section className="mx-auto grid max-w-6xl items-center gap-12 px-6 pb-24 pt-8 md:grid-cols-[1.1fr_1fr] md:pb-32">
+      <section className="mx-auto grid max-w-6xl items-center gap-12 px-6 pb-24 pt-8 md:grid-cols-[1.3fr_1fr] md:pb-32">
         <Reveal>
           <p
             className="font-[family-name:var(--font-display)] text-xs font-semibold tracking-[0.32em]"
@@ -173,7 +173,7 @@ export default function Home() {
             MARCAS E PATENTES
           </p>
           <h1
-            className="mt-5 font-[family-name:var(--font-display)] text-4xl font-medium leading-[1.15] tracking-tight md:text-5xl"
+            className="mt-5 font-[family-name:var(--font-display)] text-4xl font-medium leading-[1.15] tracking-tight md:text-[2.75rem]"
             style={{ color: CREAM }}
           >
             Do pedido ao registro,
