@@ -173,10 +173,11 @@ export default function Home() {
             MARCAS E PATENTES
           </p>
           <h1
-            className="mt-5 font-[family-name:var(--font-display)] text-4xl font-medium leading-[1.15] tracking-tight md:text-[3.1rem]"
+            className="mt-5 font-[family-name:var(--font-display)] text-4xl font-medium leading-[1.15] tracking-tight md:text-5xl"
             style={{ color: CREAM }}
           >
-            Do pedido ao registro, sem perder o prazo.
+            Do pedido ao registro,
+            <br className="hidden md:block" /> sem perder o prazo.
           </h1>
           <p className="mt-6 max-w-[46ch] text-base leading-relaxed" style={{ color: `${CREAM}b3` }}>
             Boards organizados por cliente e processo, com prazos, responsáveis e
@@ -235,7 +236,11 @@ export default function Home() {
             <Reveal key={title} delay={i * 80} className={span}>
               <div
                 className="flex h-full flex-col gap-3 rounded-2xl border p-6"
-                style={{ borderColor: `${GOLD}22`, background: `${WINE}40` }}
+                style={
+                  span
+                    ? { borderColor: `${GOLD}30`, background: `linear-gradient(135deg, ${WINE}66, ${WINE}25)` }
+                    : { borderColor: `${GOLD}22`, background: `${WINE}40` }
+                }
               >
                 <Icon size={20} weight="bold" style={{ color: GOLD }} />
                 <h3 className="text-base font-semibold" style={{ color: CREAM }}>
