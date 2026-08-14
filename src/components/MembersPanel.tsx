@@ -1,11 +1,14 @@
 "use client"
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Trash, UserPlus } from '@phosphor-icons/react/dist/ssr'
 import { supabase } from '../lib/supabaseClient'
 import { Avatar } from './ui/Avatar'
 import { Field } from './ui/Field'
+import { Select } from './ui/Select'
 import { Button } from './ui/Button'
-import type { MemberRole } from '../../supabase/types'
+import { ConfirmDialog } from './ui/ConfirmDialog'
+import { useToast } from './ui/ToastProvider'
+import type { MemberRole, UserSearchResult } from '../../supabase/types'
 
 type Member = {
   membershipId: string
@@ -13,6 +16,7 @@ type Member = {
   role: MemberRole
   name: string
   email: string
+  avatarUrl: string | null
 }
 
 type PendingInvite = {
@@ -38,8 +42,35 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
   const [inviting, setInviting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
+  const [pendingRemove, setPendingRemove] = useState<Member | null>(null)
+  const [searchResults, setSearchResults] = useState<UserSearchResult[]>([])
+  const [showResults, setShowResults] = useState(false)
+  const searchBoxRef = useRef<HTMLDivElement>(null)
 
   const isAdmin = myRole === 'owner' || myRole === 'admin'
+  const toast = useToast()
+
+  useEffect(() => {
+    const query = inviteEmail.trim()
+    if (query.length < 3) {
+      setSearchResults([])
+      return
+    }
+    const handle = setTimeout(async () => {
+      const { data } = await supabase.rpc('search_users_by_email', { p_query: query })
+      setSearchResults((data as UserSearchResult[]) ?? [])
+    }, 250)
+    return () => clearTimeout(handle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inviteEmail])
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) setShowResults(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   useEffect(() => {
     fetchAll()
@@ -64,10 +95,12 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
     const rows = (memberships ?? []) as { id: string; user_id: string; role: MemberRole }[]
     const ids = rows.map((r) => r.user_id)
     const { data: profiles } = ids.length
-      ? await supabase.from('profiles').select('id, full_name, email').in('id', ids)
-      : { data: [] as { id: string; full_name: string | null; email: string }[] }
+      ? await supabase.from('profiles').select('id, full_name, email, avatar_url').in('id', ids)
+      : { data: [] as { id: string; full_name: string | null; email: string; avatar_url: string | null }[] }
     const profileById = new Map(
-      ((profiles ?? []) as { id: string; full_name: string | null; email: string }[]).map((p) => [p.id, p])
+      ((profiles ?? []) as { id: string; full_name: string | null; email: string; avatar_url: string | null }[]).map(
+        (p) => [p.id, p]
+      )
     )
 
     setMembers(
@@ -77,6 +110,7 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
         role: r.role,
         name: profileById.get(r.user_id)?.full_name || profileById.get(r.user_id)?.email || 'Membro',
         email: profileById.get(r.user_id)?.email ?? '',
+        avatarUrl: profileById.get(r.user_id)?.avatar_url ?? null,
       }))
     )
 
@@ -107,9 +141,40 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
       p_email: email,
       p_role: inviteRole,
     })
+    if (error) {
+      setInviting(false)
+      return setError(error.message)
+    }
+
+    if (data === 'existing') {
+      setInviting(false)
+      setInfo(`Convite enviado — ${email} já tem conta e vai ver o pedido na caixa de entrada dele(a).`)
+      setInviteEmail('')
+      fetchAll()
+      return
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession()
+    const accessToken = sessionData.session?.access_token
+    if (!accessToken) {
+      setInviting(false)
+      setError('Convite registrado, mas não foi possível enviar o email (sessão expirada).')
+      fetchAll()
+      return
+    }
+
+    const res = await fetch('/api/invites/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ workspaceId, email }),
+    })
     setInviting(false)
-    if (error) return setError(error.message)
-    setInfo(data === 'added' ? `${email} já tinha conta — adicionado direto ao workspace.` : `Convite enviado para ${email}.`)
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      setError(`Convite registrado, mas o email falhou: ${body.error ?? res.statusText}`)
+    } else {
+      setInfo(`Convite enviado para ${email}.`)
+    }
     setInviteEmail('')
     fetchAll()
   }
@@ -126,38 +191,66 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
     if (error) setError(error.message)
   }
 
+  function requestRemoveMember(membershipId: string) {
+    const member = members?.find((m) => m.membershipId === membershipId) ?? null
+    setPendingRemove(member)
+  }
+
   async function revokeInvite(id: string) {
     setInvites((prev) => prev.filter((i) => i.id !== id))
     const { error } = await supabase.from('workspace_invites').delete().eq('id', id)
     if (error) setError(error.message)
+    else toast('Convite cancelado.')
   }
 
   return (
     <div className="flex flex-col gap-8">
       {isAdmin && (
         <form onSubmit={sendInvite} className="flex flex-wrap items-end gap-3">
-          <div className="w-64">
+          <div ref={searchBoxRef} className="relative w-full sm:w-64">
             <Field
               label="Convidar por email"
               type="email"
               name="invite-email"
-              placeholder="pessoa@revollution.com"
+              placeholder="Busque por nome ou email…"
+              autoComplete="off"
               value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
+              onChange={(e) => {
+                setInviteEmail(e.target.value)
+                setShowResults(true)
+              }}
+              onFocus={() => setShowResults(true)}
             />
+            {showResults && searchResults.length > 0 && (
+              <div
+                className="absolute z-20 mt-1 w-full rounded-lg border border-border bg-background py-1 shadow-lg"
+                style={{ animation: 'dropdown-in 150ms ease-out' }}
+              >
+                {searchResults.map((u) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => {
+                      setInviteEmail(u.email)
+                      setShowResults(false)
+                    }}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-surface"
+                  >
+                    <Avatar name={u.full_name || u.email} imageUrl={u.avatar_url} size={26} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm text-foreground">{u.full_name || u.email}</span>
+                      {u.full_name && <span className="block truncate text-xs text-muted-foreground">{u.email}</span>}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-foreground">Papel</label>
-            <select
-              value={inviteRole}
-              onChange={(e) => setInviteRole(e.target.value as MemberRole)}
-              className="h-11 rounded-lg border border-border bg-background px-3.5 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-            >
-              <option value="member">Membro</option>
-              <option value="admin">Admin</option>
-              <option value="guest">Convidado</option>
-            </select>
-          </div>
+          <Select label="Papel" value={inviteRole} onChange={(e) => setInviteRole(e.target.value as MemberRole)}>
+            <option value="member">Membro</option>
+            <option value="admin">Admin</option>
+            <option value="guest">Convidado</option>
+          </Select>
           <Button type="submit" disabled={inviting || !inviteEmail.trim()}>
             <UserPlus size={18} weight="bold" />
             Convidar
@@ -188,21 +281,22 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
           <ul className="divide-y divide-border rounded-xl border border-border bg-background">
             {members.map((m) => (
               <li key={m.membershipId} className="flex items-center gap-3.5 px-5 py-3.5">
-                <Avatar name={m.name} size={32} />
+                <Avatar name={m.name} imageUrl={m.avatarUrl} size={32} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-foreground">{m.name}</p>
                   {m.email && <p className="truncate text-xs text-muted-foreground">{m.email}</p>}
                 </div>
                 {isAdmin && m.role !== 'owner' ? (
-                  <select
+                  <Select
+                    size="sm"
+                    className="w-auto"
                     value={m.role}
                     onChange={(e) => changeRole(m.membershipId, e.target.value as MemberRole)}
-                    className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-accent"
                   >
                     <option value="member">Membro</option>
                     <option value="admin">Admin</option>
                     <option value="guest">Convidado</option>
-                  </select>
+                  </Select>
                 ) : (
                   <span className="rounded-full bg-surface px-2.5 py-1 text-xs text-muted-foreground">
                     {roleLabel[m.role]}
@@ -210,7 +304,7 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
                 )}
                 {isAdmin && m.role !== 'owner' && m.userId !== userId && (
                   <button
-                    onClick={() => removeMember(m.membershipId)}
+                    onClick={() => requestRemoveMember(m.membershipId)}
                     aria-label={`Remover ${m.name}`}
                     className="text-muted-foreground hover:text-destructive"
                   >
@@ -231,7 +325,7 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
               <li key={inv.id} className="flex items-center gap-3.5 px-5 py-3.5">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-foreground">{inv.email}</p>
-                  <p className="text-xs text-muted-foreground">Aguardando cadastro</p>
+                  <p className="text-xs text-muted-foreground">Aguardando aceite</p>
                 </div>
                 <span className="rounded-full bg-surface px-2.5 py-1 text-xs text-muted-foreground">
                   {roleLabel[inv.role]}
@@ -247,6 +341,20 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
             ))}
           </ul>
         </div>
+      )}
+
+      {pendingRemove && (
+        <ConfirmDialog
+          title={`Remover ${pendingRemove.name} do workspace?`}
+          description="A pessoa perde acesso a todos os boards deste workspace imediatamente."
+          confirmLabel="Remover"
+          onCancel={() => setPendingRemove(null)}
+          onConfirm={() => {
+            removeMember(pendingRemove.membershipId)
+            toast(`${pendingRemove.name} removido(a) do workspace.`)
+            setPendingRemove(null)
+          }}
+        />
       )}
     </div>
   )

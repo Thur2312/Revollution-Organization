@@ -13,6 +13,9 @@ export function BoardColumn({
   cards,
   cardMeta,
   members,
+  memberAvatars,
+  selectedCardIds,
+  onToggleSelect,
   onRename,
   onDelete,
   onAddCard,
@@ -23,6 +26,9 @@ export function BoardColumn({
   cards: Card[]
   cardMeta: Record<string, CardMeta>
   members: Record<string, string>
+  memberAvatars: Record<string, string | null>
+  selectedCardIds: Set<string>
+  onToggleSelect: (id: string) => void
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
   onAddCard: (columnId: string, title: string) => void
@@ -118,7 +124,10 @@ export function BoardColumn({
             <DotsThree size={18} weight="bold" />
           </button>
           {menuOpen && (
-            <div className="absolute right-0 top-full z-10 mt-1 w-36 rounded-lg border border-border bg-background py-1 shadow-sm">
+            <div
+              className="absolute right-0 top-full z-10 mt-1 w-36 rounded-lg border border-border bg-background py-1 shadow-sm"
+              style={{ animation: 'dropdown-in 150ms ease-out' }}
+            >
               <button
                 onClick={() => {
                   setMenuOpen(false)
@@ -141,6 +150,9 @@ export function BoardColumn({
               card={card}
               meta={cardMeta[card.id]}
               members={members}
+              memberAvatars={memberAvatars}
+              selected={selectedCardIds.has(card.id)}
+              onToggleSelect={onToggleSelect}
               onDelete={onDeleteCard}
               onOpen={onOpenCard}
             />

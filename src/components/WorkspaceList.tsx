@@ -126,8 +126,8 @@ export default function WorkspaceList({ userId }: { userId: string }) {
 
   return (
     <div className="flex flex-col gap-8">
-      <form onSubmit={createWorkspace} className="flex items-end gap-3">
-        <div className="w-64">
+      <form onSubmit={createWorkspace} className="flex flex-wrap items-end gap-3">
+        <div className="w-full sm:w-64">
           <Field
             label="Novo workspace"
             name="workspace-name"
@@ -186,20 +186,20 @@ export default function WorkspaceList({ userId }: { userId: string }) {
                         </span>
                       )}
                     </div>
-                    <p className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
-                      <span>
+                    <p className="mt-0.5 flex items-center gap-3 overflow-hidden text-xs text-muted-foreground">
+                      <span className="truncate">
                         {boardCount === 0 ? 'Nenhum board' : boardCount === 1 ? '1 board' : `${boardCount} boards`}
                         {m?.latestBoardName ? ` · último: ${m.latestBoardName}` : ''}
                       </span>
                       {!!m?.memberCount && (
-                        <span className="inline-flex items-center gap-1">
+                        <span className="hidden shrink-0 items-center gap-1 sm:inline-flex">
                           <UsersThree size={12} />
                           {m.memberCount === 1 ? '1 membro' : `${m.memberCount} membros`}
                         </span>
                       )}
                     </p>
                   </div>
-                  <span className="shrink-0 text-xs text-muted-foreground">Ver boards →</span>
+                  <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">Ver boards →</span>
                 </Link>
               </li>
             )

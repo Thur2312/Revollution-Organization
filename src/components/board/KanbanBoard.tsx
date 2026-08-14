@@ -1,5 +1,6 @@
 "use client"
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   DndContext,
   DragOverlay,
@@ -11,11 +12,18 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { SortableContext, arrayMove, horizontalListSortingStrategy } from '@dnd-kit/sortable'
-import { Plus } from '@phosphor-icons/react/dist/ssr'
+import { DownloadSimple, MagnifyingGlass, Plus, SquaresFour, Trash, X } from '@phosphor-icons/react/dist/ssr'
 import { supabase } from '../../lib/supabaseClient'
-import type { BoardColumn as BoardColumnType, Card } from '../../../supabase/types'
+import type { BoardColumn as BoardColumnType, Card, CardPriority } from '../../../supabase/types'
 import { BoardColumn } from './BoardColumn'
 import { CardModal } from './CardModal'
+import { Field } from '../ui/Field'
+import { Select } from '../ui/Select'
+import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { useToast } from '../ui/ToastProvider'
+import { toCsv, downloadCsv } from '../../lib/csv'
+
+const priorityLabel: Record<CardPriority, string> = { low: 'Baixa', medium: 'Média', high: 'Alta' }
 
 export type CardMeta = {
   checklistDone: number
@@ -30,10 +38,12 @@ export function KanbanBoard({
   boardId,
   workspaceId,
   userId,
+  boardName,
 }: {
   boardId: string
   workspaceId: string
   userId: string
+  boardName: string
 }) {
   const [columns, setColumns] = useState<BoardColumnType[]>([])
   const [cardsByColumn, setCardsByColumn] = useState<Record<string, Card[]>>({})
@@ -46,29 +56,151 @@ export function KanbanBoard({
   const [openCard, setOpenCard] = useState<Card | null>(null)
   const [cardMeta, setCardMeta] = useState<Record<string, CardMeta>>({})
   const [members, setMembers] = useState<Record<string, string>>({})
+  const [memberAvatars, setMemberAvatars] = useState<Record<string, string | null>>({})
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterAssignee, setFilterAssignee] = useState('')
+  const [filterPriority, setFilterPriority] = useState<CardPriority | ''>('')
+  const [pendingColumnDelete, setPendingColumnDelete] = useState<BoardColumnType | null>(null)
+  const [pendingCardDelete, setPendingCardDelete] = useState<Card | null>(null)
+  const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const toast = useToast()
+
+  function toggleCardSelection(id: string) {
+    setSelectedCardIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function clearSelection() {
+    setSelectedCardIds(new Set())
+  }
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  const router = useRouter()
+  const searchParams = useSearchParams()
 
   useEffect(() => {
     fetchMembers()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId])
 
+  // Deep link from the command palette (?openCard=<id>) — once the board's
+  // cards are loaded, open that card's modal and strip the param so a later
+  // manual close doesn't get immediately reopened by a stale URL.
+  useEffect(() => {
+    if (loading) return
+    const cardId = searchParams.get('openCard')
+    if (!cardId) return
+    for (const list of Object.values(cardsByColumn)) {
+      const card = list.find((c) => c.id === cardId)
+      if (card) {
+        setOpenCard(card)
+        break
+      }
+    }
+    router.replace(`/app/board/${boardId}`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading])
+
+  // Live sync: other people's column/card writes land here via Realtime.
+  // Reconciliation is upsert-by-id, so it's safe (a no-op) when the event is
+  // just an echo of this tab's own optimistic update landing back.
+  const columnsRef = useRef<BoardColumnType[]>([])
+  useEffect(() => {
+    columnsRef.current = columns
+  }, [columns])
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`board:${boardId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'board_columns', filter: `board_id=eq.${boardId}` },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            const deletedId = (payload.old as { id: string }).id
+            setColumns((prev) => prev.filter((c) => c.id !== deletedId))
+            setCardsByColumn((prev) => {
+              const next = { ...prev }
+              delete next[deletedId]
+              return next
+            })
+            return
+          }
+          const row = payload.new as BoardColumnType
+          setColumns((prev) => {
+            const next = prev.some((c) => c.id === row.id) ? prev.map((c) => (c.id === row.id ? row : c)) : [...prev, row]
+            return [...next].sort((a, b) => a.position - b.position)
+          })
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'cards' },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            const deletedId = (payload.old as { id: string }).id
+            setCardsByColumn((prev) => {
+              const next: Record<string, Card[]> = {}
+              for (const colId of Object.keys(prev)) next[colId] = prev[colId].filter((c) => c.id !== deletedId)
+              return next
+            })
+            return
+          }
+          const row = payload.new as Card
+          if (!columnsRef.current.some((c) => c.id === row.column_id)) return // not this board
+          setCardsByColumn((prev) => {
+            const next: Record<string, Card[]> = {}
+            for (const colId of Object.keys(prev)) next[colId] = prev[colId].filter((c) => c.id !== row.id)
+            const destList = [...(next[row.column_id] ?? []), row].sort((a, b) => a.position - b.position)
+            next[row.column_id] = destList
+            return next
+          })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [boardId])
+
   async function fetchMembers() {
     const { data: memberships } = await supabase.from('memberships').select('user_id').eq('workspace_id', workspaceId)
     const ids = ((memberships ?? []) as { user_id: string }[]).map((m) => m.user_id)
     if (ids.length === 0) return
-    const { data: profiles } = await supabase.from('profiles').select('id, full_name, email').in('id', ids)
+    const { data: profiles } = await supabase.from('profiles').select('id, full_name, email, avatar_url').in('id', ids)
     const map: Record<string, string> = {}
-    for (const p of (profiles ?? []) as { id: string; full_name: string | null; email: string }[]) {
+    const avatarMap: Record<string, string | null> = {}
+    for (const p of (profiles ?? []) as { id: string; full_name: string | null; email: string; avatar_url: string | null }[]) {
       map[p.id] = p.full_name || p.email
+      avatarMap[p.id] = p.avatar_url
     }
     setMembers(map)
+    setMemberAvatars(avatarMap)
   }
 
   useEffect(() => {
     fetchAll()
   }, [boardId])
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== '/') return
+      const target = e.target as HTMLElement
+      const isTyping = ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable
+      if (isTyping || openCard) return
+      e.preventDefault()
+      searchInputRef.current?.focus()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [openCard])
 
   async function fetchAll() {
     setLoading(true)
@@ -180,6 +312,11 @@ export function KanbanBoard({
     }
   }
 
+  function requestDeleteColumn(id: string) {
+    const column = columns.find((c) => c.id === id)
+    if (column) setPendingColumnDelete(column)
+  }
+
   async function addCard(columnId: string, title: string) {
     const position = cardsByColumn[columnId]?.length ?? 0
     const { data, error } = await supabase
@@ -189,6 +326,27 @@ export function KanbanBoard({
       .single()
     if (error) return setError(error.message)
     setCardsByColumn((prev) => ({ ...prev, [columnId]: [...(prev[columnId] ?? []), data as Card] }))
+  }
+
+  async function duplicateCard(source: Card) {
+    const position = cardsByColumn[source.column_id]?.length ?? 0
+    const { data, error } = await supabase
+      .from('cards')
+      .insert({
+        column_id: source.column_id,
+        title: `${source.title} (cópia)`,
+        description: source.description,
+        metadata: source.metadata,
+        position,
+        created_by: userId,
+      })
+      .select()
+      .single()
+    if (error) return setError(error.message)
+    const created = data as Card
+    setCardsByColumn((prev) => ({ ...prev, [source.column_id]: [...(prev[source.column_id] ?? []), created] }))
+    setOpenCard(null)
+    toast('Card duplicado.')
   }
 
   async function deleteCard(id: string) {
@@ -203,6 +361,72 @@ export function KanbanBoard({
     if (error) {
       setError(error.message)
       fetchAll()
+    }
+  }
+
+  function requestDeleteCard(id: string) {
+    for (const list of Object.values(cardsByColumn)) {
+      const card = list.find((c) => c.id === id)
+      if (card) {
+        setPendingCardDelete(card)
+        return
+      }
+    }
+  }
+
+  async function bulkMoveTo(destColumnId: string) {
+    const ids = Array.from(selectedCardIds)
+    if (ids.length === 0) return
+
+    let nextCardsByColumn = cardsByColumn
+    setCardsByColumn((prev) => {
+      const next: Record<string, Card[]> = {}
+      for (const colId of Object.keys(prev)) next[colId] = [...prev[colId]]
+
+      const moved: Card[] = []
+      for (const colId of Object.keys(next)) {
+        const staying: Card[] = []
+        for (const card of next[colId]) {
+          if (ids.includes(card.id) && colId !== destColumnId) moved.push({ ...card, column_id: destColumnId })
+          else staying.push(card)
+        }
+        next[colId] = staying
+      }
+      next[destColumnId] = [...(next[destColumnId] ?? []), ...moved]
+      nextCardsByColumn = next
+      return next
+    })
+    clearSelection()
+    const destColumnName = columns.find((c) => c.id === destColumnId)?.name ?? ''
+    toast(`${ids.length} ${ids.length === 1 ? 'card movido' : 'cards movidos'} para "${destColumnName}".`)
+
+    const destList = nextCardsByColumn[destColumnId] ?? []
+    await Promise.all(
+      destList.map((c, i) =>
+        supabase.from('cards').update({ column_id: destColumnId, position: i }).eq('id', c.id)
+      )
+    )
+  }
+
+  function requestBulkDelete() {
+    setBulkDeleting(true)
+  }
+
+  async function confirmBulkDelete() {
+    const ids = Array.from(selectedCardIds)
+    setBulkDeleting(false)
+    clearSelection()
+    setCardsByColumn((prev) => {
+      const next: Record<string, Card[]> = {}
+      for (const colId of Object.keys(prev)) next[colId] = prev[colId].filter((c) => !ids.includes(c.id))
+      return next
+    })
+    const { error } = await supabase.from('cards').delete().in('id', ids)
+    if (error) {
+      setError(error.message)
+      fetchAll()
+    } else {
+      toast(`${ids.length} ${ids.length === 1 ? 'card excluído' : 'cards excluídos'}.`)
     }
   }
 
@@ -307,6 +531,43 @@ export function KanbanBoard({
     )
   }
 
+  const hasActiveFilter = searchQuery.trim() !== '' || filterAssignee !== '' || filterPriority !== ''
+  const q = searchQuery.trim().toLowerCase()
+  const visibleCardsByColumn: Record<string, Card[]> = {}
+  for (const col of columns) {
+    visibleCardsByColumn[col.id] = (cardsByColumn[col.id] ?? []).filter((card) => {
+      if (q && !card.title.toLowerCase().includes(q) && !(card.description ?? '').toLowerCase().includes(q)) {
+        return false
+      }
+      if (filterAssignee && !(card.metadata?.assignee_ids ?? []).includes(filterAssignee)) return false
+      if (filterPriority && card.metadata?.priority !== filterPriority) return false
+      return true
+    })
+  }
+  const visibleCount = Object.values(visibleCardsByColumn).reduce((sum, list) => sum + list.length, 0)
+  const totalCount = Object.values(cardsByColumn).reduce((sum, list) => sum + list.length, 0)
+
+  function exportCsv() {
+    const rows: string[][] = []
+    for (const col of columns) {
+      for (const card of visibleCardsByColumn[col.id] ?? []) {
+        const assignees = (card.metadata?.assignee_ids ?? []).map((id) => members[id] ?? id).join('; ')
+        rows.push([
+          col.name,
+          card.title,
+          card.description ?? '',
+          card.metadata?.priority ? priorityLabel[card.metadata.priority] : '',
+          card.metadata?.due_date ?? '',
+          assignees,
+          (card.metadata?.labels ?? []).join('; '),
+        ])
+      }
+    }
+    const csv = toCsv(['Coluna', 'Título', 'Descrição', 'Prioridade', 'Vencimento', 'Responsáveis', 'Labels'], rows)
+    downloadCsv(`${boardName || 'board'}.csv`, csv)
+    toast('CSV exportado.')
+  }
+
   return (
     <div>
       {error && (
@@ -315,25 +576,149 @@ export function KanbanBoard({
         </p>
       )}
 
+      {(totalCount > 0 || hasActiveFilter) && (
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <div className="w-full sm:w-56">
+            <Field
+              ref={searchInputRef}
+              label="Buscar card"
+              name="card-search"
+              placeholder="Título ou descrição… (atalho: /)"
+              icon={<MagnifyingGlass size={16} />}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <Select label="Responsável" value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)}>
+            <option value="">Todos</option>
+            {Object.entries(members).map(([id, name]) => (
+              <option key={id} value={id}>
+                {name}
+              </option>
+            ))}
+          </Select>
+          <Select
+            label="Prioridade"
+            value={filterPriority}
+            onChange={(e) => setFilterPriority(e.target.value as CardPriority | '')}
+          >
+            <option value="">Todas</option>
+            {(Object.entries(priorityLabel) as [CardPriority, string][]).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </Select>
+          {hasActiveFilter && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('')
+                setFilterAssignee('')
+                setFilterPriority('')
+              }}
+              className="flex h-11 items-center gap-1 rounded-lg px-3 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <X size={14} />
+              Limpar filtros
+            </button>
+          )}
+          {hasActiveFilter && (
+            <p className="text-sm text-muted-foreground">
+              {visibleCount} de {totalCount} cards
+            </p>
+          )}
+          {totalCount > 0 && (
+            <button
+              type="button"
+              onClick={exportCsv}
+              title={hasActiveFilter ? 'Exporta os cards filtrados' : 'Exporta todos os cards do board'}
+              className="ml-auto flex h-11 items-center gap-1.5 rounded-lg border border-border px-3 text-sm text-foreground hover:border-accent hover:text-accent"
+            >
+              <DownloadSimple size={16} />
+              Exportar CSV
+            </button>
+          )}
+        </div>
+      )}
+
+      {selectedCardIds.size > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-accent/30 bg-accent/5 px-4 py-2.5">
+          <p className="text-sm font-medium text-foreground">
+            {selectedCardIds.size} {selectedCardIds.size === 1 ? 'card selecionado' : 'cards selecionados'}
+          </p>
+          <Select
+            size="sm"
+            className="w-auto"
+            defaultValue=""
+            onChange={(e) => {
+              if (e.target.value) bulkMoveTo(e.target.value)
+            }}
+          >
+            <option value="" disabled>
+              Mover para…
+            </option>
+            {columns.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+          <button
+            type="button"
+            onClick={requestBulkDelete}
+            className="flex items-center gap-1.5 text-sm text-destructive hover:underline"
+          >
+            <Trash size={14} />
+            Excluir selecionados
+          </button>
+          <button
+            type="button"
+            onClick={clearSelection}
+            className="ml-auto text-sm text-muted-foreground hover:text-foreground"
+          >
+            Cancelar seleção
+          </button>
+        </div>
+      )}
+
+      {columns.length === 0 && !addingColumn && (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border py-14 text-center">
+          <SquaresFour size={28} className="text-muted-foreground" />
+          <p className="text-sm font-medium text-primary">Este board ainda não tem colunas</p>
+          <p className="text-sm text-muted-foreground">Crie a primeira para começar a organizar cards.</p>
+          <button
+            onClick={() => setAddingColumn(true)}
+            className="mt-2 flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:border-accent hover:text-accent"
+          >
+            <Plus size={16} />
+            Criar coluna
+          </button>
+        </div>
+      )}
+
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex items-start gap-4 overflow-x-auto pb-4">
+        <div className={`flex items-start gap-4 overflow-x-auto pb-4 ${columns.length === 0 && !addingColumn ? 'hidden' : ''}`}>
           <SortableContext items={columns.map((c) => `col-sort:${c.id}`)} strategy={horizontalListSortingStrategy}>
             {columns.map((column) => (
               <BoardColumn
                 key={column.id}
                 column={column}
-                cards={cardsByColumn[column.id] ?? []}
+                cards={visibleCardsByColumn[column.id] ?? []}
                 cardMeta={cardMeta}
                 members={members}
+                memberAvatars={memberAvatars}
+                selectedCardIds={selectedCardIds}
+                onToggleSelect={toggleCardSelection}
                 onRename={renameColumn}
-                onDelete={deleteColumn}
+                onDelete={requestDeleteColumn}
                 onAddCard={addCard}
-                onDeleteCard={deleteCard}
+                onDeleteCard={requestDeleteCard}
                 onOpenCard={setOpenCard}
               />
             ))}
@@ -406,6 +791,42 @@ export function KanbanBoard({
           }}
           onUpdated={handleCardUpdated}
           onDeleted={deleteCard}
+          onDuplicate={duplicateCard}
+        />
+      )}
+
+      {pendingColumnDelete && (
+        <ConfirmDialog
+          title={`Excluir a coluna "${pendingColumnDelete.name}"?`}
+          description="Todos os cards dentro dela também serão excluídos. Essa ação não pode ser desfeita."
+          onCancel={() => setPendingColumnDelete(null)}
+          onConfirm={() => {
+            deleteColumn(pendingColumnDelete.id)
+            toast(`Coluna "${pendingColumnDelete.name}" excluída.`)
+            setPendingColumnDelete(null)
+          }}
+        />
+      )}
+
+      {pendingCardDelete && (
+        <ConfirmDialog
+          title={`Excluir o card "${pendingCardDelete.title}"?`}
+          description="Checklists, comentários e anexos desse card também serão excluídos. Essa ação não pode ser desfeita."
+          onCancel={() => setPendingCardDelete(null)}
+          onConfirm={() => {
+            deleteCard(pendingCardDelete.id)
+            toast(`Card "${pendingCardDelete.title}" excluído.`)
+            setPendingCardDelete(null)
+          }}
+        />
+      )}
+
+      {bulkDeleting && (
+        <ConfirmDialog
+          title={`Excluir ${selectedCardIds.size} ${selectedCardIds.size === 1 ? 'card' : 'cards'}?`}
+          description="Checklists, comentários e anexos desses cards também serão excluídos. Essa ação não pode ser desfeita."
+          onCancel={() => setBulkDeleting(false)}
+          onConfirm={confirmBulkDelete}
         />
       )}
     </div>

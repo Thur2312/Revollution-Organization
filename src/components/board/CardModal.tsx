@@ -1,9 +1,10 @@
 "use client"
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   CalendarBlank,
   CaretDown,
   Check,
+  Copy,
   Flag,
   Paperclip,
   Plus,
@@ -14,6 +15,7 @@ import { supabase } from '../../lib/supabaseClient'
 import type {
   Attachment,
   Card,
+  CardActivity,
   CardMetadata,
   CardPriority,
   Checklist,
@@ -23,10 +25,13 @@ import type {
 } from '../../../supabase/types'
 import { Avatar } from '../ui/Avatar'
 import { labelColor } from './labelColors'
+import { renderMarkdownLite } from '../../lib/markdownLite'
 
-type WorkspaceMember = { id: string; name: string }
+type WorkspaceMember = { id: string; name: string; avatarUrl: string | null }
 
 type CommentWithAuthor = Comment & { authorName: string }
+
+type ActivityRow = CardActivity & { actorName: string }
 
 const priorityLabel: Record<CardPriority, string> = {
   low: 'Baixa',
@@ -51,6 +56,35 @@ function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
+function formatShortDate(iso: string) {
+  const [y, m, d] = iso.split('-')
+  return `${d}/${m}/${y}`
+}
+
+function describeActivity(row: ActivityRow): string {
+  const who = row.actorName
+  switch (row.action) {
+    case 'created':
+      return `${who} criou o card`
+    case 'moved':
+      return `${who} moveu de "${row.detail.from ?? '—'}" para "${row.detail.to ?? '—'}"`
+    case 'renamed':
+      return `${who} renomeou para "${row.detail.to}"`
+    case 'priority_changed':
+      return row.detail.to
+        ? `${who} mudou a prioridade para ${priorityLabel[row.detail.to as CardPriority]}`
+        : `${who} removeu a prioridade`
+    case 'due_date_changed':
+      return row.detail.to ? `${who} definiu o prazo para ${formatShortDate(row.detail.to)}` : `${who} removeu o prazo`
+    case 'assignee_added':
+      return `${who} atribuiu ${row.detail.user_name}`
+    case 'assignee_removed':
+      return `${who} removeu ${row.detail.user_name} dos responsáveis`
+    default:
+      return `${who} atualizou o card`
+  }
+}
+
 function formatBytes(bytes: number | null) {
   if (!bytes) return ''
   if (bytes < 1024) return `${bytes} B`
@@ -65,6 +99,7 @@ export function CardModal({
   onClose,
   onUpdated,
   onDeleted,
+  onDuplicate,
 }: {
   card: Card
   workspaceId: string
@@ -72,14 +107,17 @@ export function CardModal({
   onClose: () => void
   onUpdated: (card: Card) => void
   onDeleted: (id: string) => void
+  onDuplicate: (card: Card) => void
 }) {
   const [title, setTitle] = useState(card.title)
   const [description, setDescription] = useState(card.description ?? '')
+  const [editingDescription, setEditingDescription] = useState(!card.description)
   const [metadata, setMetadata] = useState<CardMetadata>(card.metadata ?? {})
 
   const [checklists, setChecklists] = useState<Checklist[]>([])
   const [itemsByChecklist, setItemsByChecklist] = useState<Record<string, ChecklistItem[]>>({})
   const [comments, setComments] = useState<CommentWithAuthor[]>([])
+  const [activity, setActivity] = useState<ActivityRow[] | null>(null)
   const [attachments, setAttachments] = useState<Attachment[]>([])
 
   const [loading, setLoading] = useState(true)
@@ -89,6 +127,8 @@ export function CardModal({
   const [addingChecklist, setAddingChecklist] = useState(false)
   const [newItemText, setNewItemText] = useState<Record<string, string>>({})
   const [newComment, setNewComment] = useState('')
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
+  const commentBoxRef = useRef<HTMLTextAreaElement>(null)
   const [posting, setPosting] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -99,6 +139,7 @@ export function CardModal({
 
   useEffect(() => {
     fetchDetails()
+    fetchActivity()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card.id])
 
@@ -107,15 +148,57 @@ export function CardModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId])
 
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  // Live sync: someone else commenting on this same card while it's open
+  // shows up without a refetch. Upsert-by-id makes the echo of this tab's
+  // own postComment() a safe no-op.
+  useEffect(() => {
+    const channel = supabase
+      .channel(`card-comments:${card.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'comments', filter: `card_id=eq.${card.id}` },
+        async (payload) => {
+          if (payload.eventType === 'DELETE') {
+            const deletedId = (payload.old as { id: string }).id
+            setComments((prev) => prev.filter((c) => c.id !== deletedId))
+            return
+          }
+          const row = payload.new as Comment
+          setComments((prev) => {
+            if (prev.some((c) => c.id === row.id)) return prev
+            const authorName = row.user_id === userId ? 'Você' : members.find((m) => m.id === row.user_id)?.name
+            return [...prev, { ...row, authorName: authorName ?? 'Usuário' }].sort(
+              (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            )
+          })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card.id, members])
+
   async function fetchMembers() {
     const { data: memberships } = await supabase.from('memberships').select('user_id').eq('workspace_id', workspaceId)
     const ids = ((memberships ?? []) as { user_id: string }[]).map((m) => m.user_id)
     if (ids.length === 0) return
-    const { data: profiles } = await supabase.from('profiles').select('id, full_name, email').in('id', ids)
+    const { data: profiles } = await supabase.from('profiles').select('id, full_name, email, avatar_url').in('id', ids)
     setMembers(
-      ((profiles ?? []) as Pick<Profile, 'id' | 'full_name' | 'email'>[]).map((p) => ({
+      ((profiles ?? []) as Pick<Profile, 'id' | 'full_name' | 'email' | 'avatar_url'>[]).map((p) => ({
         id: p.id,
         name: p.full_name || p.email,
+        avatarUrl: p.avatar_url,
       }))
     )
   }
@@ -190,6 +273,41 @@ export function CardModal({
     setLoading(false)
   }
 
+  async function fetchActivity() {
+    const { data } = await supabase
+      .from('card_activity')
+      .select('*')
+      .eq('card_id', card.id)
+      .order('created_at', { ascending: false })
+      .limit(15)
+    const rows = (data ?? []) as CardActivity[]
+    if (rows.length === 0) return setActivity([])
+
+    const actorIds = Array.from(new Set(rows.map((r) => r.actor_id).filter(Boolean))) as string[]
+    const assigneeIds = rows
+      .filter((r) => r.action === 'assignee_added' || r.action === 'assignee_removed')
+      .map((r) => r.detail.user_id)
+      .filter(Boolean) as string[]
+    const allIds = Array.from(new Set([...actorIds, ...assigneeIds]))
+    const { data: profiles } = allIds.length
+      ? await supabase.from('profiles').select('id, full_name, email').in('id', allIds)
+      : { data: [] as Pick<Profile, 'id' | 'full_name' | 'email'>[] }
+    const nameById = new Map<string, string>(
+      ((profiles ?? []) as Pick<Profile, 'id' | 'full_name' | 'email'>[]).map((p) => [p.id, p.full_name || p.email])
+    )
+
+    setActivity(
+      rows.map((r) => ({
+        ...r,
+        actorName: (r.actor_id && nameById.get(r.actor_id)) || 'Alguém',
+        detail:
+          r.action === 'assignee_added' || r.action === 'assignee_removed'
+            ? { ...r.detail, user_name: r.detail.user_id ? nameById.get(r.detail.user_id) ?? 'alguém' : 'alguém' }
+            : r.detail,
+      }))
+    )
+  }
+
   async function saveTitle() {
     const trimmed = title.trim()
     if (!trimmed || trimmed === card.title) {
@@ -199,9 +317,11 @@ export function CardModal({
     const { error } = await supabase.from('cards').update({ title: trimmed }).eq('id', card.id)
     if (error) return setError(error.message)
     onUpdated({ ...card, title: trimmed, metadata })
+    fetchActivity()
   }
 
   async function saveDescription() {
+    setEditingDescription(false)
     const value = description.trim() || null
     if (value === card.description) return
     const { error } = await supabase.from('cards').update({ description: value }).eq('id', card.id)
@@ -217,6 +337,7 @@ export function CardModal({
     const { error } = await supabase.from('cards').update({ metadata: next }).eq('id', card.id)
     if (error) return setError(error.message)
     onUpdated({ ...card, title, metadata: next })
+    fetchActivity()
   }
 
   async function deleteCard() {
@@ -287,6 +408,36 @@ export function CardModal({
     if (error) setError(error.message)
   }
 
+  // Detects an in-progress "@query" right before the cursor (only when the
+  // @ starts a word — preceded by whitespace or the start of the text) so
+  // typing an email or a plain "@" mid-sentence doesn't pop the dropdown.
+  function detectMention(text: string, cursor: number) {
+    const upToCursor = text.slice(0, cursor)
+    const match = upToCursor.match(/(?:^|\s)@([^\s@]*)$/)
+    setMentionQuery(match ? match[1] : null)
+  }
+
+  function insertMention(member: WorkspaceMember) {
+    const textarea = commentBoxRef.current
+    const cursor = textarea?.selectionStart ?? newComment.length
+    const upToCursor = newComment.slice(0, cursor)
+    const afterCursor = newComment.slice(cursor)
+    const replaced = upToCursor.replace(/@([^\s@]*)$/, `@${member.name} `)
+    const next = replaced + afterCursor
+    setNewComment(next)
+    setMentionQuery(null)
+    requestAnimationFrame(() => {
+      textarea?.focus()
+      const pos = replaced.length
+      textarea?.setSelectionRange(pos, pos)
+    })
+  }
+
+  const mentionMatches =
+    mentionQuery !== null
+      ? members.filter((m) => m.name.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 5)
+      : []
+
   async function postComment(e: React.FormEvent) {
     e.preventDefault()
     if (!newComment.trim()) return
@@ -350,11 +501,13 @@ export function CardModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-primary/40 px-4 py-10 backdrop-blur-sm"
+      style={{ animation: 'backdrop-in 150ms ease-out' }}
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-2xl rounded-2xl border border-border bg-background shadow-xl"
+        style={{ animation: 'modal-in 220ms cubic-bezier(0.16,1,0.3,1)' }}
       >
         <div className="flex items-start justify-between gap-3 border-b border-border px-6 py-4">
           <textarea
@@ -392,7 +545,7 @@ export function CardModal({
               <select
                 value={metadata.priority ?? ''}
                 onChange={(e) => saveMetadata({ priority: (e.target.value || undefined) as CardPriority | undefined })}
-                className={`h-9 appearance-none rounded-lg border pl-8 pr-8 text-sm font-medium outline-none transition-colors focus:ring-2 focus:ring-accent/30 ${
+                className={`h-9 appearance-none rounded-lg border pl-8 pr-8 text-sm font-medium outline-none transition-[border-color,box-shadow] duration-200 ease-out hover:shadow-sm focus:shadow-[0_0_0_4px_rgba(201,162,107,0.22)] ${
                   priorityFieldStyle[metadata.priority ?? 'none']
                 }`}
               >
@@ -442,7 +595,7 @@ export function CardModal({
                           : 'border-border text-muted-foreground hover:border-accent/40'
                       }`}
                     >
-                      <Avatar name={m.name} size={18} />
+                      <Avatar name={m.name} imageUrl={m.avatarUrl} size={18} />
                       {m.name}
                     </button>
                   )
@@ -483,14 +636,29 @@ export function CardModal({
 
           <section className="mb-6">
             <h3 className="mb-2 text-sm font-medium text-primary">Descrição</h3>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              onBlur={saveDescription}
-              rows={3}
-              placeholder="Adicione uma descrição mais detalhada..."
-              className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-            />
+            {editingDescription ? (
+              <>
+                <textarea
+                  autoFocus
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  onBlur={saveDescription}
+                  rows={4}
+                  placeholder="Adicione uma descrição mais detalhada..."
+                  className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+                />
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Markdown: **negrito**, *itálico*, `código`, [link](url), listas com &quot;- &quot;
+                </p>
+              </>
+            ) : (
+              <div
+                onClick={() => setEditingDescription(true)}
+                className="cursor-text rounded-lg border border-transparent px-3 py-2 text-sm leading-relaxed text-foreground hover:border-border hover:bg-surface [&_ul]:my-1 [&_ol]:my-1 [&_p]:mb-2 [&_p:last-child]:mb-0"
+              >
+                {renderMarkdownLite(description)}
+              </div>
+            )}
           </section>
 
           <section className="mb-6">
@@ -662,13 +830,40 @@ export function CardModal({
               ))}
             </div>
             <form onSubmit={postComment} className="flex flex-col gap-2">
-              <textarea
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                rows={2}
-                placeholder="Escreva um comentário..."
-                className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-              />
+              <div className="relative">
+                <textarea
+                  ref={commentBoxRef}
+                  value={newComment}
+                  onChange={(e) => {
+                    setNewComment(e.target.value)
+                    detectMention(e.target.value, e.target.selectionStart)
+                  }}
+                  onKeyUp={(e) => detectMention(e.currentTarget.value, e.currentTarget.selectionStart)}
+                  onBlur={() => setTimeout(() => setMentionQuery(null), 150)}
+                  rows={2}
+                  placeholder="Escreva um comentário... (@ pra mencionar alguém)"
+                  className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+                />
+                {mentionQuery !== null && mentionMatches.length > 0 && (
+                  <div
+                    className="absolute bottom-full left-0 z-10 mb-1 w-56 rounded-lg border border-border bg-background py-1 shadow-lg"
+                    style={{ animation: 'dropdown-in 150ms ease-out' }}
+                  >
+                    {mentionMatches.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => insertMention(m)}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface"
+                      >
+                        <Avatar name={m.name} imageUrl={m.avatarUrl} size={20} />
+                        {m.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button
                 type="submit"
                 disabled={posting || !newComment.trim()}
@@ -678,6 +873,20 @@ export function CardModal({
               </button>
             </form>
           </section>
+
+          {activity !== null && activity.length > 0 && (
+            <section className="mt-6">
+              <h3 className="mb-2 text-sm font-medium text-primary">Atividade</h3>
+              <ul className="flex flex-col gap-1.5">
+                {activity.map((row) => (
+                  <li key={row.id} className="flex items-baseline gap-2 text-xs text-muted-foreground">
+                    <span className="flex-1">{describeActivity(row)}</span>
+                    <span className="shrink-0">{formatDateTime(row.created_at)}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </div>
 
         <div className="flex items-center justify-between border-t border-border px-6 py-3">
@@ -695,13 +904,22 @@ export function CardModal({
               </button>
             </div>
           ) : (
-            <button
-              onClick={() => setConfirmingDelete(true)}
-              className="flex items-center gap-1.5 text-sm text-destructive hover:underline"
-            >
-              <Trash size={15} />
-              Excluir card
-            </button>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setConfirmingDelete(true)}
+                className="flex items-center gap-1.5 text-sm text-destructive hover:underline"
+              >
+                <Trash size={15} />
+                Excluir card
+              </button>
+              <button
+                onClick={() => onDuplicate(card)}
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+              >
+                <Copy size={15} />
+                Duplicar
+              </button>
+            </div>
           )}
           <button onClick={onClose} className="text-sm text-muted-foreground hover:text-foreground">
             Fechar

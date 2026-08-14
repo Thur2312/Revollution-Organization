@@ -23,6 +23,7 @@ export interface Profile {
   email: string;
   full_name: string | null;
   avatar_url: string | null;
+  company: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -30,6 +31,7 @@ export interface Profile {
 export interface ProfileUpdate {
   full_name?: string | null;
   avatar_url?: string | null;
+  company?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,13 +107,16 @@ export interface MembershipUpdate {
 }
 
 // ---------------------------------------------------------------------------
-// workspace_invites — see invite_member()/accept_pending_invites() in
-// 0005_invites.sql. Never inserted directly by the client; always through
-// the invite_member RPC below.
+// workspace_invites — see invite_member() in 0005_invites.sql (rewritten in
+// 0011_open_signup_invites.sql to always stay pending; membership is only
+// ever created by the invitee calling accept_workspace_invite()). Never
+// inserted directly by the client.
 // ---------------------------------------------------------------------------
 
 export type InviteRole = Exclude<MemberRole, 'owner'>;
-export type InviteOutcome = 'added' | 'invited';
+// 'existing' — invitee already has an account, will see this in their inbox.
+// 'new' — invitee doesn't have an account yet, needs the invite email.
+export type InviteOutcome = 'existing' | 'new';
 
 export interface WorkspaceInvite {
   id: string;
@@ -121,6 +126,22 @@ export interface WorkspaceInvite {
   invited_by: string;
   accepted_at: string | null;
   created_at: string;
+}
+
+export interface PendingInviteRow {
+  id: string;
+  workspace_id: string;
+  workspace_name: string;
+  role: InviteRole;
+  invited_by_name: string;
+  created_at: string;
+}
+
+export interface UserSearchResult {
+  id: string;
+  email: string;
+  full_name: string | null;
+  avatar_url: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -307,6 +328,40 @@ export interface AttachmentInsert {
   uploaded_by: string;
 }
 
+export type NotificationType = 'card_assigned' | 'card_commented' | 'card_mentioned';
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: NotificationType;
+  card_id: string | null;
+  actor_id: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationUpdate {
+  read_at?: string | null;
+}
+
+export type CardActivityAction =
+  | 'created'
+  | 'moved'
+  | 'renamed'
+  | 'priority_changed'
+  | 'due_date_changed'
+  | 'assignee_added'
+  | 'assignee_removed';
+
+export interface CardActivity {
+  id: string;
+  card_id: string;
+  actor_id: string | null;
+  action: CardActivityAction;
+  detail: Record<string, string | null>;
+  created_at: string;
+}
+
 // ---------------------------------------------------------------------------
 // Database — pass to createClient<Database>() from @supabase/supabase-js
 // for a fully typed client without running `supabase gen types`.
@@ -375,6 +430,16 @@ export interface Database {
         Insert: AttachmentInsert;
         Update: never; // attachments are replaced (delete + upload), not edited
       };
+      notifications: {
+        Row: Notification;
+        Insert: never; // created only by the notify_* triggers
+        Update: NotificationUpdate;
+      };
+      card_activity: {
+        Row: CardActivity;
+        Insert: never; // created only by the log_card_* triggers
+        Update: never;
+      };
     };
     Functions: {
       invite_member: {
@@ -384,6 +449,22 @@ export interface Database {
           p_role?: InviteRole;
         };
         Returns: InviteOutcome;
+      };
+      accept_workspace_invite: {
+        Args: { p_invite_id: string };
+        Returns: string; // workspace_id
+      };
+      decline_workspace_invite: {
+        Args: { p_invite_id: string };
+        Returns: void;
+      };
+      my_pending_invites: {
+        Args: Record<string, never>;
+        Returns: PendingInviteRow[];
+      };
+      search_users_by_email: {
+        Args: { p_query: string };
+        Returns: UserSearchResult[];
       };
     };
   };

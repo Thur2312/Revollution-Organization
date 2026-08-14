@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { EnvelopeSimple, LockSimple } from '@phosphor-icons/react/dist/ssr'
+import { Buildings, EnvelopeSimple, LockSimple, UserCircle } from '@phosphor-icons/react/dist/ssr'
 import { supabase } from '../../../lib/supabaseClient'
 import { Logo } from '../../../components/ui/Logo'
 import { Field } from '../../../components/ui/Field'
@@ -13,8 +13,9 @@ type Mode = 'signin' | 'signup'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-function validate(mode: Mode, email: string, password: string): string | null {
+function validate(mode: Mode, email: string, password: string, fullName: string): string | null {
   if (!EMAIL_RE.test(email)) return 'Digite um email válido.'
+  if (mode === 'signup' && !fullName.trim()) return 'Digite seu nome completo.'
   if (mode === 'signup' && password.length < 8) return 'A senha precisa ter pelo menos 8 caracteres.'
   if (mode === 'signup' && !/[0-9]/.test(password)) return 'A senha precisa ter pelo menos um número.'
   if (password.length < 6) return 'A senha precisa ter pelo menos 6 caracteres.'
@@ -25,6 +26,8 @@ export default function SignInPage() {
   const [mode, setMode] = useState<Mode>('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [fullName, setFullName] = useState('')
+  const [company, setCompany] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -36,7 +39,7 @@ export default function SignInPage() {
     setInfo(null)
 
     const cleanEmail = email.trim().toLowerCase()
-    const validationError = validate(mode, cleanEmail, password)
+    const validationError = validate(mode, cleanEmail, password, fullName)
     if (validationError) return setError(validationError)
 
     setLoading(true)
@@ -49,7 +52,11 @@ export default function SignInPage() {
       return
     }
 
-    const { data, error } = await supabase.auth.signUp({ email: cleanEmail, password })
+    const { data, error } = await supabase.auth.signUp({
+      email: cleanEmail,
+      password,
+      options: { data: { full_name: fullName.trim(), company: company.trim() || null } },
+    })
     setLoading(false)
     if (error) return setError(error.message)
 
@@ -107,6 +114,17 @@ export default function SignInPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {mode === 'signup' && (
+              <Field
+                label="Nome completo"
+                name="full-name"
+                autoComplete="name"
+                required
+                icon={<UserCircle size={18} />}
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+              />
+            )}
             <Field
               label="Email"
               type="email"
@@ -129,7 +147,17 @@ export default function SignInPage() {
               onChange={(e) => setPassword(e.target.value)}
             />
             {mode === 'signup' && (
-              <p className="-mt-2 text-xs text-muted-foreground">Mínimo de 8 caracteres, com pelo menos um número.</p>
+              <>
+                <p className="-mt-2 text-xs text-muted-foreground">Mínimo de 8 caracteres, com pelo menos um número.</p>
+                <Field
+                  label="Empresa (opcional)"
+                  name="company"
+                  autoComplete="organization"
+                  icon={<Buildings size={18} />}
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
+                />
+              </>
             )}
 
             {info && (
@@ -150,7 +178,7 @@ export default function SignInPage() {
         </div>
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          Acesso restrito a membros convidados da Revollution.
+          Depois de criar sua conta, peça a um colega pra te convidar pra um workspace.
         </p>
       </div>
     </main>

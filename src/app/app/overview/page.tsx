@@ -29,6 +29,7 @@ export default function OverviewPage() {
   const { userId } = useAppSession()
   const [rows, setRows] = useState<Row[] | null>(null)
   const [members, setMembers] = useState<Record<string, string>>({})
+  const [memberAvatars, setMemberAvatars] = useState<Record<string, string | null>>({})
   const [scope, setScope] = useState<'mine' | 'all'>('mine')
   const [error, setError] = useState<string | null>(null)
 
@@ -94,12 +95,18 @@ export default function OverviewPage() {
       .in('workspace_id', workspaceIds)
     const memberIds = Array.from(new Set(((memberships2 ?? []) as { user_id: string }[]).map((m) => m.user_id)))
     if (memberIds.length > 0) {
-      const { data: profiles } = await supabase.from('profiles').select('id, full_name, email').in('id', memberIds)
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, avatar_url')
+        .in('id', memberIds)
       const map: Record<string, string> = {}
-      for (const p of (profiles ?? []) as { id: string; full_name: string | null; email: string }[]) {
+      const avatarMap: Record<string, string | null> = {}
+      for (const p of (profiles ?? []) as { id: string; full_name: string | null; email: string; avatar_url: string | null }[]) {
         map[p.id] = p.full_name || p.email
+        avatarMap[p.id] = p.avatar_url
       }
       setMembers(map)
+      setMemberAvatars(avatarMap)
     }
   }
 
@@ -173,7 +180,9 @@ export default function OverviewPage() {
                     const priority = card.metadata.priority
                     const dueDate = card.metadata.due_date
                     const isOverdue = !!dueDate && dueDate < new Date().toISOString().slice(0, 10)
-                    const assignees = (card.metadata.assignee_ids ?? []).map((id) => members[id]).filter(Boolean) as string[]
+                    const assignees = (card.metadata.assignee_ids ?? [])
+                      .filter((id) => members[id])
+                      .map((id) => ({ id, name: members[id], avatarUrl: memberAvatars[id] ?? null }))
                     return (
                       <tr key={card.id} className="transition-colors hover:bg-surface">
                         <td className="px-4 py-3">
@@ -198,8 +207,8 @@ export default function OverviewPage() {
                         <td className="px-4 py-3">
                           {assignees.length > 0 ? (
                             <span className="flex items-center -space-x-1.5">
-                              {assignees.slice(0, 4).map((name, i) => (
-                                <Avatar key={i} name={name} size={22} className="ring-2 ring-background" />
+                              {assignees.slice(0, 4).map((a) => (
+                                <Avatar key={a.id} name={a.name} imageUrl={a.avatarUrl} size={22} className="ring-2 ring-background" />
                               ))}
                             </span>
                           ) : (

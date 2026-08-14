@@ -46,7 +46,7 @@ export default function BoardPage({ params }: { params: { id: string } }) {
       <h1 className="mb-8 text-2xl font-semibold tracking-tight text-primary">{board?.name ?? ' '}</h1>
 
       {userId && board ? (
-        <KanbanBoard boardId={boardId} workspaceId={board.workspace_id} userId={userId} />
+        <KanbanBoard boardId={boardId} workspaceId={board.workspace_id} userId={userId} boardName={board.name} />
       ) : (
         <div className="flex gap-4">
           {[0, 1, 2].map((i) => (

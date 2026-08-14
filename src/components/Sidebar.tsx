@@ -7,15 +7,18 @@ import {
   CaretDown,
   CaretRight,
   ClipboardText,
+  Envelope,
   Kanban,
   SignOut,
   SquaresFour,
+  UserCircle,
   UsersThree,
 } from '@phosphor-icons/react/dist/ssr'
 import { supabase } from '../lib/supabaseClient'
 import { SIDEBAR_REFRESH_EVENT } from '../lib/sidebarRefresh'
 import { LogoMark } from './ui/Logo'
 import { BackToSite } from './ui/BackToSite'
+import { NotificationBell } from './NotificationBell'
 
 type BoardRow = { id: string; name: string; workspace_id: string }
 type WorkspaceRow = { id: string; name: string }
@@ -32,6 +35,21 @@ export function Sidebar({ userId }: { userId: string }) {
   const [boards, setBoards] = useState<BoardRow[]>([])
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [collapsed, setCollapsed] = useState(false)
+  const [userToggled, setUserToggled] = useState(false)
+  const [inviteCount, setInviteCount] = useState(0)
+
+  // Auto-collapse to the icon rail on narrow viewports (tablet/phone) so the
+  // sidebar doesn't eat most of the screen — but once the person toggles it
+  // by hand, respect that choice instead of fighting them on every resize.
+  useEffect(() => {
+    if (userToggled) return
+    function applyForWidth() {
+      setCollapsed(window.innerWidth < 768)
+    }
+    applyForWidth()
+    window.addEventListener('resize', applyForWidth)
+    return () => window.removeEventListener('resize', applyForWidth)
+  }, [userToggled])
 
   useEffect(() => {
     if (!userId) return
@@ -55,7 +73,13 @@ export function Sidebar({ userId }: { userId: string }) {
       setWorkspaces((ws ?? []) as WorkspaceRow[])
       setBoards((bd ?? []) as BoardRow[])
     }
+    async function loadInviteCount() {
+      const { data } = await supabase.rpc('my_pending_invites')
+      if (mounted) setInviteCount((data as unknown[] | null)?.length ?? 0)
+    }
     load()
+    loadInviteCount()
+    window.addEventListener(SIDEBAR_REFRESH_EVENT, loadInviteCount)
     // Workspace/board create/rename/delete happen in sibling components
     // (WorkspaceList, BoardList) that don't share state with this tree —
     // they broadcast this event instead of us polling or lifting state up.
@@ -63,6 +87,7 @@ export function Sidebar({ userId }: { userId: string }) {
     return () => {
       mounted = false
       window.removeEventListener('sidebar:refresh', load)
+      window.removeEventListener('sidebar:refresh', loadInviteCount)
     }
   }, [userId])
 
@@ -99,12 +124,28 @@ export function Sidebar({ userId }: { userId: string }) {
           <LogoMark className="h-8 w-8" />
         </Link>
         <button
-          onClick={() => setCollapsed(false)}
+          onClick={() => {
+            setUserToggled(true)
+            setCollapsed(false)
+          }}
           title="Expandir menu"
           className="rounded-md p-1.5 text-muted-foreground hover:bg-surface hover:text-foreground"
         >
           <CaretRight size={16} />
         </button>
+        <NotificationBell userId={userId} collapsed />
+        <Link
+          href="/app/invites"
+          title="Convites"
+          className="relative rounded-md p-1.5 text-muted-foreground hover:bg-surface hover:text-foreground"
+        >
+          <Envelope size={18} />
+          {inviteCount > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-semibold leading-none text-destructive-foreground">
+              {inviteCount > 9 ? '9+' : inviteCount}
+            </span>
+          )}
+        </Link>
         <div className="mt-2 flex flex-col items-center gap-1.5">
           {workspaces?.map((w) => (
             <Link
@@ -120,6 +161,13 @@ export function Sidebar({ userId }: { userId: string }) {
           ))}
         </div>
         <div className="mt-auto flex flex-col items-center gap-3">
+          <Link
+            href="/app/profile"
+            title="Perfil"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-surface hover:text-foreground"
+          >
+            <UserCircle size={16} />
+          </Link>
           <button
             title="Sair"
             onClick={() => supabase.auth.signOut()}
@@ -139,13 +187,19 @@ export function Sidebar({ userId }: { userId: string }) {
           <LogoMark className="h-7 w-7" />
           <span className="text-[15px] font-semibold tracking-tight text-primary">Revollution</span>
         </Link>
-        <button
-          onClick={() => setCollapsed(true)}
-          title="Colapsar menu"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-surface hover:text-foreground"
-        >
-          <CaretDoubleLeft size={15} />
-        </button>
+        <div className="flex items-center gap-1">
+          <NotificationBell userId={userId} collapsed={false} />
+          <button
+            onClick={() => {
+              setUserToggled(true)
+              setCollapsed(true)
+            }}
+            title="Colapsar menu"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-surface hover:text-foreground"
+          >
+            <CaretDoubleLeft size={15} />
+          </button>
+        </div>
       </div>
 
       <nav className="flex flex-col gap-0.5 px-3">
@@ -156,6 +210,15 @@ export function Sidebar({ userId }: { userId: string }) {
         <Link href="/app/overview" className={navClasses(pathname === '/app/overview')}>
           <ClipboardText size={17} />
           Visão geral
+        </Link>
+        <Link href="/app/invites" className={navClasses(pathname === '/app/invites')}>
+          <Envelope size={17} />
+          Convites
+          {inviteCount > 0 && (
+            <span className="ml-auto flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground">
+              {inviteCount}
+            </span>
+          )}
         </Link>
       </nav>
 
@@ -235,6 +298,10 @@ export function Sidebar({ userId }: { userId: string }) {
             Membros
           </Link>
         )}
+        <Link href="/app/profile" className={navClasses(pathname === '/app/profile')}>
+          <UserCircle size={17} />
+          Perfil
+        </Link>
         <div className="px-2.5 py-1.5">
           <BackToSite />
         </div>

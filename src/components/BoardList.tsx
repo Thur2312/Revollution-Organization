@@ -1,11 +1,13 @@
 "use client"
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { DotsThree, Kanban, Plus } from '@phosphor-icons/react/dist/ssr'
+import { DotsThree, Kanban, MagnifyingGlass, Plus } from '@phosphor-icons/react/dist/ssr'
 import { supabase } from '../lib/supabaseClient'
 import { refreshSidebar } from '../lib/sidebarRefresh'
 import { Field } from './ui/Field'
 import { Button } from './ui/Button'
+import { ConfirmDialog } from './ui/ConfirmDialog'
+import { useToast } from './ui/ToastProvider'
 
 type BoardRow = {
   id: string
@@ -15,12 +17,15 @@ type BoardRow = {
 export default function BoardList({ workspaceId, userId }: { workspaceId: string; userId: string }) {
   const [boards, setBoards] = useState<BoardRow[] | null>(null)
   const [columnCounts, setColumnCounts] = useState<Record<string, number>>({})
+  const [query, setQuery] = useState('')
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<BoardRow | null>(null)
+  const toast = useToast()
 
   useEffect(() => {
     fetchBoards()
@@ -92,23 +97,46 @@ export default function BoardList({ workspaceId, userId }: { workspaceId: string
     }
   }
 
+  function requestDeleteBoard(id: string) {
+    setMenuOpenId(null)
+    const board = boards?.find((b) => b.id === id) ?? null
+    setPendingDelete(board)
+  }
+
+  const filteredBoards = boards?.filter((b) => b.name.toLowerCase().includes(query.trim().toLowerCase())) ?? null
+
   return (
     <div className="flex flex-col gap-8">
-      <form onSubmit={createBoard} className="flex items-end gap-3">
-        <div className="w-64">
-          <Field
-            label="Novo board"
-            name="board-name"
-            placeholder="Ex.: Sprint atual"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
-        <Button type="submit" disabled={creating || !name.trim()}>
-          <Plus size={18} weight="bold" />
-          Criar
-        </Button>
-      </form>
+      <div className="flex flex-wrap items-end gap-3">
+        <form onSubmit={createBoard} className="flex flex-wrap items-end gap-3">
+          <div className="w-full sm:w-64">
+            <Field
+              label="Novo board"
+              name="board-name"
+              placeholder="Ex.: Sprint atual"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <Button type="submit" disabled={creating || !name.trim()}>
+            <Plus size={18} weight="bold" />
+            Criar
+          </Button>
+        </form>
+
+        {boards !== null && boards.length > 0 && (
+          <div className="w-full sm:w-56">
+            <Field
+              label="Buscar board"
+              name="board-search"
+              placeholder="Nome do board…"
+              icon={<MagnifyingGlass size={16} />}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        )}
+      </div>
 
       {error && (
         <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -128,9 +156,15 @@ export default function BoardList({ workspaceId, userId }: { workspaceId: string
           <p className="text-sm font-medium text-primary">Nenhum board ainda</p>
           <p className="text-sm text-muted-foreground">Crie o primeiro acima para começar a organizar cards.</p>
         </div>
+      ) : filteredBoards !== null && filteredBoards.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border py-14 text-center">
+          <MagnifyingGlass size={28} className="text-muted-foreground" />
+          <p className="text-sm font-medium text-primary">Nenhum board encontrado</p>
+          <p className="text-sm text-muted-foreground">Tente outro termo de busca.</p>
+        </div>
       ) : (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {boards.map((b) => {
+          {(filteredBoards ?? []).map((b) => {
             const columns = columnCounts[b.id] ?? 0
             const isEditing = editingId === b.id
             return (
@@ -145,7 +179,10 @@ export default function BoardList({ workspaceId, userId }: { workspaceId: string
                       <DotsThree size={18} weight="bold" />
                     </button>
                     {menuOpenId === b.id && (
-                      <div className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-border bg-background py-1 shadow-sm">
+                      <div
+                        className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-border bg-background py-1 shadow-sm"
+                        style={{ animation: 'dropdown-in 150ms ease-out' }}
+                      >
                         <button
                           onClick={() => startRename(b)}
                           className="flex w-full items-center px-3 py-1.5 text-left text-sm text-foreground hover:bg-surface"
@@ -153,7 +190,7 @@ export default function BoardList({ workspaceId, userId }: { workspaceId: string
                           Renomear
                         </button>
                         <button
-                          onClick={() => deleteBoard(b.id)}
+                          onClick={() => requestDeleteBoard(b.id)}
                           className="flex w-full items-center px-3 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10"
                         >
                           Excluir board
@@ -199,6 +236,19 @@ export default function BoardList({ workspaceId, userId }: { workspaceId: string
             )
           })}
         </ul>
+      )}
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title={`Excluir o board "${pendingDelete.name}"?`}
+          description="Todas as colunas e cards desse board também serão excluídos. Essa ação não pode ser desfeita."
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            deleteBoard(pendingDelete.id)
+            toast(`Board "${pendingDelete.name}" excluído.`)
+            setPendingDelete(null)
+          }}
+        />
       )}
     </div>
   )

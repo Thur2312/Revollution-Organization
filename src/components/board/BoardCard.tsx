@@ -22,12 +22,18 @@ export function BoardCard({
   card,
   meta,
   members,
+  memberAvatars,
+  selected,
+  onToggleSelect,
   onDelete,
   onOpen,
 }: {
   card: Card
   meta?: CardMeta
   members: Record<string, string>
+  memberAvatars: Record<string, string | null>
+  selected: boolean
+  onToggleSelect: (id: string) => void
   onDelete: (id: string) => void
   onOpen: (card: Card) => void
 }) {
@@ -50,7 +56,9 @@ export function BoardCard({
   const checklistComplete = checklistTotal > 0 && checklistDone === checklistTotal
   const hasBadges = !!dueDate || checklistTotal > 0 || (meta?.comments ?? 0) > 0 || (meta?.attachments ?? 0) > 0
   const labels = card.metadata?.labels ?? []
-  const assignees = (card.metadata?.assignee_ids ?? []).map((id) => members[id]).filter(Boolean) as string[]
+  const assignees = (card.metadata?.assignee_ids ?? [])
+    .filter((id) => members[id])
+    .map((id) => ({ id, name: members[id], avatarUrl: memberAvatars[id] ?? null }))
 
   return (
     <div
@@ -59,7 +67,9 @@ export function BoardCard({
       {...attributes}
       {...listeners}
       onClick={() => onOpen(card)}
-      className="group flex flex-col gap-2 rounded-lg border border-border bg-background p-3 text-left shadow-sm transition-colors hover:border-accent/50"
+      className={`group flex flex-col gap-2 rounded-lg border p-3 text-left shadow-sm transition-colors ${
+        selected ? 'border-accent bg-accent/5' : 'border-border bg-background hover:border-accent/50'
+      }`}
     >
       {labels.length > 0 && (
         <div className="flex flex-wrap gap-1">
@@ -75,6 +85,17 @@ export function BoardCard({
       )}
 
       <div className="flex items-start gap-2">
+        <input
+          type="checkbox"
+          checked={selected}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onChange={() => onToggleSelect(card.id)}
+          aria-label={`Selecionar ${card.title}`}
+          className={`mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-accent transition-opacity ${
+            selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          }`}
+        />
         {priority && (
           <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${priorityDot[priority]}`} aria-hidden="true" />
         )}
@@ -124,8 +145,8 @@ export function BoardCard({
 
           {assignees.length > 0 && (
             <span className="ml-auto flex items-center -space-x-1.5">
-              {assignees.slice(0, 3).map((name, i) => (
-                <Avatar key={i} name={name} size={19} className="ring-2 ring-background" />
+              {assignees.slice(0, 3).map((a) => (
+                <Avatar key={a.id} name={a.name} imageUrl={a.avatarUrl} size={19} className="ring-2 ring-background" />
               ))}
               {assignees.length > 3 && (
                 <span className="flex h-[19px] w-[19px] items-center justify-center rounded-full bg-surface text-[9px] font-semibold text-muted-foreground ring-2 ring-background">

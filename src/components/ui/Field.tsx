@@ -24,8 +24,12 @@ export const Field = forwardRef<HTMLInputElement, FieldProps>(
             ref={ref}
             id={inputId}
             className={`h-11 w-full rounded-lg border bg-background px-3.5 text-sm text-foreground
-              placeholder:text-muted-foreground outline-none transition-colors
-              focus:border-accent focus:ring-2 focus:ring-accent/30
+              placeholder:text-muted-foreground outline-none
+              shadow-[inset_0_1px_2px_rgba(67,15,28,0.05)]
+              transition-[border-color,box-shadow] duration-200 ease-out
+              hover:border-accent/40
+              focus:border-accent focus:shadow-[inset_0_1px_2px_rgba(67,15,28,0.05),0_0_0_4px_rgba(201,162,107,0.22)]
+              disabled:cursor-not-allowed disabled:bg-surface disabled:text-muted-foreground disabled:shadow-none
               ${icon ? 'pl-10' : ''}
               ${error ? 'border-destructive' : 'border-border'}
               ${className}`}
