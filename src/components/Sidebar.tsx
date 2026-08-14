@@ -1,7 +1,7 @@
 "use client"
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   CaretDoubleLeft,
   CaretDown,
@@ -17,7 +17,6 @@ import {
 import { supabase } from '../lib/supabaseClient'
 import { SIDEBAR_REFRESH_EVENT } from '../lib/sidebarRefresh'
 import { LogoMark } from './ui/Logo'
-import { BackToSite } from './ui/BackToSite'
 import { NotificationBell } from './NotificationBell'
 
 type BoardRow = { id: string; name: string; workspace_id: string }
@@ -31,6 +30,12 @@ function monogramStyle(id: string) {
 
 export function Sidebar({ userId }: { userId: string }) {
   const pathname = usePathname()
+  const router = useRouter()
+
+  async function handleSignOut() {
+    await supabase.auth.signOut()
+    router.push('/')
+  }
   const [workspaces, setWorkspaces] = useState<WorkspaceRow[] | null>(null)
   const [boards, setBoards] = useState<BoardRow[]>([])
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -170,7 +175,7 @@ export function Sidebar({ userId }: { userId: string }) {
           </Link>
           <button
             title="Sair"
-            onClick={() => supabase.auth.signOut()}
+            onClick={handleSignOut}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-surface hover:text-destructive"
           >
             <SignOut size={16} />
@@ -302,11 +307,8 @@ export function Sidebar({ userId }: { userId: string }) {
           <UserCircle size={17} />
           Perfil
         </Link>
-        <div className="px-2.5 py-1.5">
-          <BackToSite />
-        </div>
         <button
-          onClick={() => supabase.auth.signOut()}
+          onClick={handleSignOut}
           className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-surface hover:text-destructive"
         >
           <SignOut size={17} />
