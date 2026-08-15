@@ -6,6 +6,7 @@ dist
 coverage
 /.idea
 /.vscode
+.claude/settings.local.json
 
 # Supabase
 supabase/.branches/

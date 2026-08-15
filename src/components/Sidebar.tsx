@@ -6,8 +6,11 @@ import {
   CaretDoubleLeft,
   CaretDown,
   CaretRight,
+  ChartLineUp,
+  Clock,
   ClipboardText,
   Envelope,
+  Gauge,
   Kanban,
   SignOut,
   SquaresFour,
@@ -16,10 +19,13 @@ import {
 } from '@phosphor-icons/react/dist/ssr'
 import { supabase } from '../lib/supabaseClient'
 import { SIDEBAR_REFRESH_EVENT } from '../lib/sidebarRefresh'
-import { LogoMark } from './ui/Logo'
+import { markSessionEnd } from '../lib/timesheet'
+import { Logo, LogoMark } from './ui/Logo'
 import { NotificationBell } from './NotificationBell'
+import { boardColorClasses } from './board/boardColors'
+import type { BoardColor } from '../../supabase/types'
 
-type BoardRow = { id: string; name: string; workspace_id: string }
+type BoardRow = { id: string; name: string; workspace_id: string; color: BoardColor }
 type WorkspaceRow = { id: string; name: string }
 
 function monogramStyle(id: string) {
@@ -28,11 +34,12 @@ function monogramStyle(id: string) {
   return hash === 0 ? 'bg-primary text-primary-foreground' : 'bg-accent text-accent-foreground'
 }
 
-export function Sidebar({ userId }: { userId: string }) {
+export function Sidebar({ userId, isPlatformAdmin = false }: { userId: string; isPlatformAdmin?: boolean }) {
   const pathname = usePathname()
   const router = useRouter()
 
   async function handleSignOut() {
+    await markSessionEnd(userId)
     await supabase.auth.signOut()
     router.push('/')
   }
@@ -70,8 +77,9 @@ export function Sidebar({ userId }: { userId: string }) {
         supabase.from('workspaces').select('id, name').in('id', ids).order('name'),
         supabase
           .from('boards')
-          .select('id, name, workspace_id')
+          .select('id, name, workspace_id, color')
           .in('workspace_id', ids)
+          .neq('kind', 'crm') // CRM has its own dedicated nav entry, not a generic board
           .order('created_at', { ascending: true }),
       ])
       if (!mounted) return
@@ -151,6 +159,39 @@ export function Sidebar({ userId }: { userId: string }) {
             </span>
           )}
         </Link>
+        <Link
+          href="/app/crm"
+          title="CRM"
+          className={`rounded-md p-1.5 ${
+            pathname.startsWith('/app/crm') || pathname.endsWith('/crm')
+              ? 'text-accent'
+              : 'text-muted-foreground hover:bg-surface hover:text-foreground'
+          }`}
+        >
+          <ChartLineUp size={18} />
+        </Link>
+        {isPlatformAdmin && (
+          <>
+            <Link
+              href="/app/dashboard"
+              title="Dashboard"
+              className={`rounded-md p-1.5 ${
+                pathname === '/app/dashboard' ? 'text-accent' : 'text-muted-foreground hover:bg-surface hover:text-foreground'
+              }`}
+            >
+              <Gauge size={18} />
+            </Link>
+            <Link
+              href="/app/timesheet"
+              title="Timesheet"
+              className={`rounded-md p-1.5 ${
+                pathname === '/app/timesheet' ? 'text-accent' : 'text-muted-foreground hover:bg-surface hover:text-foreground'
+              }`}
+            >
+              <Clock size={18} />
+            </Link>
+          </>
+        )}
         <div className="mt-2 flex flex-col items-center gap-1.5">
           {workspaces?.map((w) => (
             <Link
@@ -188,9 +229,8 @@ export function Sidebar({ userId }: { userId: string }) {
   return (
     <aside className="flex h-dvh w-64 shrink-0 flex-col border-r border-border bg-background">
       <div className="flex items-center justify-between px-4 py-4">
-        <Link href="/app" className="flex items-center gap-2">
-          <LogoMark className="h-7 w-7" />
-          <span className="text-[15px] font-semibold tracking-tight text-primary">Revollution</span>
+        <Link href="/app" className="flex items-center">
+          <Logo className="h-7" />
         </Link>
         <div className="flex items-center gap-1">
           <NotificationBell userId={userId} collapsed={false} />
@@ -225,6 +265,22 @@ export function Sidebar({ userId }: { userId: string }) {
             </span>
           )}
         </Link>
+        <Link href="/app/crm" className={navClasses(pathname.startsWith('/app/crm') || pathname.endsWith('/crm'))}>
+          <ChartLineUp size={17} />
+          CRM
+        </Link>
+        {isPlatformAdmin && (
+          <>
+            <Link href="/app/dashboard" className={navClasses(pathname === '/app/dashboard')}>
+              <Gauge size={17} />
+              Dashboard
+            </Link>
+            <Link href="/app/timesheet" className={navClasses(pathname === '/app/timesheet')}>
+              <Clock size={17} />
+              Timesheet
+            </Link>
+          </>
+        )}
       </nav>
 
       <div className="mt-4 flex-1 overflow-y-auto px-3">
@@ -281,6 +337,7 @@ export function Sidebar({ userId }: { userId: string }) {
                                   : 'text-muted-foreground hover:bg-surface hover:text-foreground'
                               }`}
                             >
+                              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${boardColorClasses(b.color).dot}`} />
                               <Kanban size={14} />
                               <span className="truncate">{b.name}</span>
                             </Link>

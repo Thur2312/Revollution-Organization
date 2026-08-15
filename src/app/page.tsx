@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Cinzel } from 'next/font/google'
+import { Montserrat } from 'next/font/google'
 import {
   ArrowRight,
   BellRinging,
@@ -7,10 +7,13 @@ import {
   MagnifyingGlass,
   ArrowsClockwise,
 } from '@phosphor-icons/react/dist/ssr'
-import { LogoMark } from '../components/ui/Logo'
+import { Logo } from '../components/ui/Logo'
 import { Reveal } from '../components/ui/Reveal'
 
-const display = Cinzel({ subsets: ['latin'], weight: ['500', '600'], variable: '--font-display' })
+// The wordmark itself is now the actual logo image (see Logo.tsx), so this
+// is the only font on the page — Montserrat is the family embedded behind
+// the "MARCAS E PATENTES" tagline in the brand logo file.
+const body = Montserrat({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-body' })
 
 const WINE = '#430F1C'
 const DEEP = '#2B0A15'
@@ -144,17 +147,9 @@ function Seam() {
 
 export default function Home() {
   return (
-    <main className={display.variable} style={{ background: DEEP }}>
+    <main className={`${body.variable} font-[family-name:var(--font-body)]`} style={{ background: DEEP }}>
       <header className="mx-auto flex h-20 max-w-6xl items-center justify-between px-6">
-        <span className="inline-flex items-center gap-3">
-          <LogoMark className="h-9 w-9" />
-          <span
-            className="font-[family-name:var(--font-display)] text-[15px] font-semibold tracking-[0.18em]"
-            style={{ color: GOLD_LIGHT }}
-          >
-            REVOLLUTION
-          </span>
-        </span>
+        <Logo className="h-9" />
         <Link
           href="/auth/signin"
           className="inline-flex h-9 items-center rounded-full border px-5 text-sm transition-colors"
@@ -167,13 +162,13 @@ export default function Home() {
       <section className="mx-auto grid max-w-6xl items-center gap-12 px-6 pb-24 pt-8 md:grid-cols-[1.3fr_1fr] md:pb-32">
         <Reveal>
           <p
-            className="font-[family-name:var(--font-display)] text-xs font-semibold tracking-[0.32em]"
+            className="font-[family-name:var(--font-body)] text-xs font-semibold tracking-[0.32em]"
             style={{ color: GOLD }}
           >
             MARCAS E PATENTES
           </p>
           <h1
-            className="mt-5 font-[family-name:var(--font-display)] text-4xl font-medium leading-[1.15] tracking-tight md:text-[2.75rem]"
+            className="mt-5 text-4xl font-bold leading-[1.15] tracking-tight md:text-[2.75rem]"
             style={{ color: CREAM }}
           >
             Do pedido ao registro,
@@ -206,10 +201,7 @@ export default function Home() {
           <DragCue />
         </Reveal>
         <Reveal delay={100}>
-          <h2
-            className="font-[family-name:var(--font-display)] text-2xl font-medium leading-snug md:text-3xl"
-            style={{ color: CREAM }}
-          >
+          <h2 className="text-2xl font-bold leading-snug md:text-3xl" style={{ color: CREAM }}>
             Cada processo, seu próprio board.
           </h2>
           <p className="mt-4 max-w-[52ch] text-sm leading-relaxed" style={{ color: `${CREAM}99` }}>
@@ -224,10 +216,7 @@ export default function Home() {
 
       <section className="mx-auto max-w-6xl px-6 py-16 md:py-24">
         <Reveal>
-          <h2
-            className="max-w-md font-[family-name:var(--font-display)] text-2xl font-medium leading-snug md:text-3xl"
-            style={{ color: CREAM }}
-          >
+          <h2 className="max-w-md text-2xl font-bold leading-snug md:text-3xl" style={{ color: CREAM }}>
             Feito pra acompanhar o trabalho de perto.
           </h2>
         </Reveal>
@@ -259,10 +248,7 @@ export default function Home() {
 
       <section className="mx-auto max-w-6xl px-6 py-16 md:py-24">
         <Reveal>
-          <h2
-            className="max-w-lg font-[family-name:var(--font-display)] text-2xl font-medium leading-snug md:text-3xl"
-            style={{ color: CREAM }}
-          >
+          <h2 className="max-w-lg text-2xl font-bold leading-snug md:text-3xl" style={{ color: CREAM }}>
             Todo mundo vê o mesmo board. Nem todo mundo edita do mesmo jeito.
           </h2>
         </Reveal>
@@ -300,15 +286,12 @@ export default function Home() {
       <footer className="relative overflow-hidden">
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute left-1/2 top-0 h-[280px] w-[280px] -translate-x-1/2 -translate-y-1/2 opacity-[0.05]"
+          className="pointer-events-none absolute left-1/2 top-0 h-[130px] w-[500px] -translate-x-1/2 -translate-y-1/2 opacity-[0.05]"
         >
-          <LogoMark className="h-full w-full" />
+          <Logo className="h-full" />
         </div>
         <div className="relative mx-auto flex max-w-6xl flex-col items-center gap-2 px-6 py-14 text-center">
-          <LogoMark className="h-8 w-8" />
-          <p className="font-[family-name:var(--font-display)] text-sm tracking-[0.18em]" style={{ color: GOLD_LIGHT }}>
-            REVOLLUTION
-          </p>
+          <Logo className="h-8" />
           <p className="mt-1 text-xs" style={{ color: `${CREAM}66` }}>
             Ferramenta interna de organização e boards
           </p>

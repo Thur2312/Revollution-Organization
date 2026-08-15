@@ -5,13 +5,15 @@ import { supabase } from './supabaseClient'
 type AppSession = {
   userId: string | null
   loading: boolean
+  isPlatformAdmin: boolean
 }
 
-const AppSessionContext = createContext<AppSession>({ userId: null, loading: true })
+const AppSessionContext = createContext<AppSession>({ userId: null, loading: true, isPlatformAdmin: false })
 
 export function AppSessionProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -31,7 +33,25 @@ export function AppSessionProvider({ children }: { children: React.ReactNode }) 
     }
   }, [])
 
-  return <AppSessionContext.Provider value={{ userId, loading }}>{children}</AppSessionContext.Provider>
+  useEffect(() => {
+    if (!userId) {
+      setIsPlatformAdmin(false)
+      return
+    }
+    let mounted = true
+    async function loadAdminFlag() {
+      const { data } = await supabase.from('profiles').select('is_platform_admin').eq('id', userId as string).single()
+      if (mounted) setIsPlatformAdmin(data?.is_platform_admin ?? false)
+    }
+    loadAdminFlag()
+    return () => {
+      mounted = false
+    }
+  }, [userId])
+
+  return (
+    <AppSessionContext.Provider value={{ userId, loading, isPlatformAdmin }}>{children}</AppSessionContext.Provider>
+  )
 }
 
 export function useAppSession() {

@@ -6,6 +6,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { DotsThree, Plus, X } from '@phosphor-icons/react/dist/ssr'
 import type { BoardColumn as BoardColumnType, Card } from '../../../supabase/types'
 import { BoardCard } from './BoardCard'
+import { crmStageAccent } from './boardColors'
 import type { CardMeta } from './KanbanBoard'
 
 export function BoardColumn({
@@ -15,12 +16,14 @@ export function BoardColumn({
   members,
   memberAvatars,
   selectedCardIds,
+  crm = false,
   onToggleSelect,
   onRename,
   onDelete,
   onAddCard,
   onDeleteCard,
   onOpenCard,
+  onToggleCelebrate,
 }: {
   column: BoardColumnType
   cards: Card[]
@@ -28,12 +31,14 @@ export function BoardColumn({
   members: Record<string, string>
   memberAvatars: Record<string, string | null>
   selectedCardIds: Set<string>
+  crm?: boolean
   onToggleSelect: (id: string) => void
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
   onAddCard: (columnId: string, title: string) => void
   onDeleteCard: (id: string) => void
   onOpenCard: (card: Card) => void
+  onToggleCelebrate: (columnId: string, next: boolean) => void
 }) {
   // Two distinct id namespaces on purpose: `column.id` is the drop target
   // cards land on (read by KanbanBoard's card drag-end logic), while
@@ -70,6 +75,8 @@ export function BoardColumn({
     setAddingCard(false)
   }
 
+  const stageAccent = crm ? crmStageAccent(column.position) : null
+
   return (
     <div
       ref={setSortRef}
@@ -78,7 +85,9 @@ export function BoardColumn({
         transition,
         opacity: isDragging ? 0.5 : 1,
       }}
-      className="flex w-72 shrink-0 flex-col rounded-xl border border-border bg-surface"
+      className={`flex w-72 shrink-0 flex-col overflow-hidden rounded-xl border ${
+        stageAccent ? `border-transparent ${stageAccent.bg}` : 'border-border bg-surface'
+      }`}
     >
       <div
         {...(editingName ? {} : attributes)}
@@ -104,12 +113,16 @@ export function BoardColumn({
           <div className="flex min-w-0 items-center gap-2">
             <button
               onClick={() => setEditingName(true)}
-              className="truncate text-sm font-medium text-foreground hover:text-primary"
+              className={`truncate text-sm font-medium hover:opacity-80 ${stageAccent?.text ?? 'text-foreground hover:text-primary'}`}
             >
               {column.name}
             </button>
             {cards.length > 0 && (
-              <span className="shrink-0 rounded-full bg-border/60 px-1.5 py-0.5 text-[11px] font-medium leading-none text-muted-foreground">
+              <span
+                className={`shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-medium leading-none ${
+                  stageAccent ? `bg-black/10 ${stageAccent.subtle}` : 'bg-border/60 text-muted-foreground'
+                }`}
+              >
                 {cards.length}
               </span>
             )}
@@ -118,16 +131,31 @@ export function BoardColumn({
         <div className="relative shrink-0">
           <button
             onClick={() => setMenuOpen((v) => !v)}
-            className="rounded p-1 text-muted-foreground hover:bg-border/60 hover:text-foreground"
+            className={`rounded p-1 ${
+              stageAccent
+                ? `${stageAccent.subtle} hover:bg-black/10 hover:opacity-100`
+                : 'text-muted-foreground hover:bg-border/60 hover:text-foreground'
+            }`}
             aria-label="Opções da coluna"
           >
             <DotsThree size={18} weight="bold" />
           </button>
           {menuOpen && (
             <div
-              className="absolute right-0 top-full z-10 mt-1 w-36 rounded-lg border border-border bg-background py-1 shadow-sm"
+              className="absolute right-0 top-full z-10 mt-1 w-48 rounded-lg border border-border bg-background py-1 shadow-sm"
               style={{ animation: 'dropdown-in 150ms ease-out' }}
             >
+              {crm && (
+                <button
+                  onClick={() => {
+                    setMenuOpen(false)
+                    onToggleCelebrate(column.id, !column.celebrate_on_card)
+                  }}
+                  className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-sm text-foreground hover:bg-border/40"
+                >
+                  🎉 {column.celebrate_on_card ? 'Desativar confete' : 'Confete ao adicionar card'}
+                </button>
+              )}
               <button
                 onClick={() => {
                   setMenuOpen(false)
@@ -155,6 +183,7 @@ export function BoardColumn({
               onToggleSelect={onToggleSelect}
               onDelete={onDeleteCard}
               onOpen={onOpenCard}
+              crm={crm}
             />
           ))}
         </SortableContext>
@@ -178,7 +207,7 @@ export function BoardColumn({
                   setCardTitle('')
                 }
               }}
-              placeholder="Título do card"
+              placeholder={crm ? 'Nome do cliente' : 'Título do card'}
               className="w-full resize-none rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
             />
             <div className="flex items-center gap-2">
@@ -204,10 +233,14 @@ export function BoardColumn({
         ) : (
           <button
             onClick={() => setAddingCard(true)}
-            className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-border/40 hover:text-foreground"
+            className={`flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm ${
+              stageAccent
+                ? `${stageAccent.subtle} hover:bg-black/10 hover:opacity-100`
+                : 'text-muted-foreground hover:bg-border/40 hover:text-foreground'
+            }`}
           >
             <Plus size={16} />
-            Adicionar card
+            {crm ? 'Adicionar cliente' : 'Adicionar card'}
           </button>
         )}
       </div>

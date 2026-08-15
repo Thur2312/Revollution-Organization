@@ -4,6 +4,8 @@ import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { supabase } from '../../../../lib/supabaseClient'
 import { useAppSession } from '../../../../lib/AppSessionContext'
+import { boardColorClasses } from '../../../../components/board/boardColors'
+import type { BoardColor } from '../../../../../supabase/types'
 
 const KanbanBoard = dynamic(
   () => import('../../../../components/board/KanbanBoard').then((m) => m.KanbanBoard),
@@ -16,6 +18,7 @@ export default function BoardPage({ params }: { params: { id: string } }) {
   const [board, setBoard] = useState<{
     name: string
     workspace_id: string
+    color: BoardColor
     workspace: { name: string } | null
   } | null>(null)
 
@@ -23,11 +26,16 @@ export default function BoardPage({ params }: { params: { id: string } }) {
     async function load() {
       const { data } = await supabase
         .from('boards')
-        .select('name, workspace_id, workspace:workspaces(name)')
+        .select('name, workspace_id, color, workspace:workspaces(name)')
         .eq('id', boardId)
         .single()
       setBoard(
-        (data as unknown as { name: string; workspace_id: string; workspace: { name: string } | null }) ?? null
+        (data as unknown as {
+          name: string
+          workspace_id: string
+          color: BoardColor
+          workspace: { name: string } | null
+        }) ?? null
       )
     }
     load()
@@ -43,7 +51,10 @@ export default function BoardPage({ params }: { params: { id: string } }) {
           /
         </p>
       )}
-      <h1 className="mb-8 text-2xl font-semibold tracking-tight text-primary">{board?.name ?? ' '}</h1>
+      <h1 className="mb-8 flex items-center gap-2.5 text-2xl font-semibold tracking-tight text-primary">
+        {board && <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${boardColorClasses(board.color).dot}`} />}
+        {board?.name ?? ' '}
+      </h1>
 
       {userId && board ? (
         <KanbanBoard boardId={boardId} workspaceId={board.workspace_id} userId={userId} boardName={board.name} />

@@ -5,11 +5,12 @@ import { useEffect, useState } from 'react'
 import { AppSessionProvider, useAppSession } from '../../lib/AppSessionContext'
 import { buttonClasses } from '../../components/ui/Button'
 import { CommandPalette } from '../../components/CommandPalette'
+import { TimesheetHeartbeat } from '../../components/TimesheetHeartbeat'
 
 const Sidebar = dynamic(() => import('../../components/Sidebar').then((m) => m.Sidebar), { ssr: false })
 
 function AppShell({ children }: { children: React.ReactNode }) {
-  const { userId, loading } = useAppSession()
+  const { userId, loading, isPlatformAdmin } = useAppSession()
   const [paletteOpen, setPaletteOpen] = useState(false)
 
   useEffect(() => {
@@ -40,9 +41,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-dvh bg-surface">
-      <Sidebar userId={userId} />
+      <Sidebar userId={userId} isPlatformAdmin={isPlatformAdmin} />
       <main className="flex-1 overflow-y-auto">{children}</main>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <TimesheetHeartbeat userId={userId} />
     </div>
   )
 }

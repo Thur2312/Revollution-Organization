@@ -24,6 +24,7 @@ export interface Profile {
   full_name: string | null;
   avatar_url: string | null;
   company: string | null;
+  is_platform_admin: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -148,11 +149,16 @@ export interface UserSearchResult {
 // boards
 // ---------------------------------------------------------------------------
 
+export type BoardKind = 'kanban' | 'crm';
+export type BoardColor = 'accent' | 'rose' | 'amber' | 'emerald' | 'sky' | 'violet' | 'slate';
+
 export interface Board {
   id: string;
   workspace_id: string;
   team_id: string | null;
   name: string;
+  kind: BoardKind;
+  color: BoardColor;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -162,12 +168,15 @@ export interface BoardInsert {
   workspace_id: string;
   team_id?: string | null;
   name: string;
+  kind?: BoardKind;
+  color?: BoardColor;
   created_by: string;
 }
 
 export interface BoardUpdate {
   name?: string;
   team_id?: string | null;
+  color?: BoardColor;
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +188,7 @@ export interface BoardColumn {
   board_id: string;
   name: string;
   position: number;
+  celebrate_on_card: boolean;
   created_at: string;
 }
 
@@ -186,11 +196,13 @@ export interface BoardColumnInsert {
   board_id: string;
   name: string;
   position: number;
+  celebrate_on_card?: boolean;
 }
 
 export interface BoardColumnUpdate {
   name?: string;
   position?: number;
+  celebrate_on_card?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +216,11 @@ export interface CardMetadata {
   priority?: CardPriority;
   assignee_ids?: string[]; // profiles.id
   labels?: string[];
+  // CRM board cards only — set on manual edit and on spreadsheet import.
+  // The client's name lives in cards.title itself, not here.
+  client_phone?: string;
+  client_email?: string;
+  proposal_value?: number;
 }
 
 export interface Card {
@@ -363,6 +380,30 @@ export interface CardActivity {
 }
 
 // ---------------------------------------------------------------------------
+// time_entries — one row per user per calendar day, managed by the client
+// session heartbeat (see src/components/TimesheetHeartbeat.tsx).
+// ---------------------------------------------------------------------------
+
+export interface TimeEntry {
+  id: string;
+  user_id: string;
+  work_date: string;
+  started_at: string;
+  last_seen_at: string;
+  ended_at: string | null;
+}
+
+export interface TimeEntryInsert {
+  user_id: string;
+  work_date: string;
+}
+
+export interface TimeEntryUpdate {
+  last_seen_at?: string;
+  ended_at?: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // Database — pass to createClient<Database>() from @supabase/supabase-js
 // for a fully typed client without running `supabase gen types`.
 // ---------------------------------------------------------------------------
@@ -439,6 +480,11 @@ export interface Database {
         Row: CardActivity;
         Insert: never; // created only by the log_card_* triggers
         Update: never;
+      };
+      time_entries: {
+        Row: TimeEntry;
+        Insert: TimeEntryInsert;
+        Update: TimeEntryUpdate;
       };
     };
     Functions: {

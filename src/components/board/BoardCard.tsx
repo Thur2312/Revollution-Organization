@@ -1,7 +1,7 @@
 "use client"
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { CalendarBlank, ChatCircle, CheckSquare, Paperclip, X } from '@phosphor-icons/react/dist/ssr'
+import { CalendarBlank, ChatCircle, CheckSquare, CurrencyDollar, Envelope, Paperclip, Phone, X } from '@phosphor-icons/react/dist/ssr'
 import type { Card } from '../../../supabase/types'
 import type { CardMeta } from './KanbanBoard'
 import { Avatar } from '../ui/Avatar'
@@ -18,12 +18,17 @@ function formatShortDate(iso: string) {
   return `${day}/${month}`
 }
 
+function formatCurrency(value: number) {
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
 export function BoardCard({
   card,
   meta,
   members,
   memberAvatars,
   selected,
+  crm = false,
   onToggleSelect,
   onDelete,
   onOpen,
@@ -33,6 +38,7 @@ export function BoardCard({
   members: Record<string, string>
   memberAvatars: Record<string, string | null>
   selected: boolean
+  crm?: boolean
   onToggleSelect: (id: string) => void
   onDelete: (id: string) => void
   onOpen: (card: Card) => void
@@ -113,6 +119,29 @@ export function BoardCard({
           <X size={14} />
         </button>
       </div>
+
+      {crm && (card.metadata?.client_phone || card.metadata?.client_email || card.metadata?.proposal_value) && (
+        <div className="flex flex-col gap-1 pl-0.5 text-xs text-muted-foreground">
+          {card.metadata?.client_phone && (
+            <span className="inline-flex items-center gap-1.5 truncate">
+              <Phone size={12} />
+              {card.metadata.client_phone}
+            </span>
+          )}
+          {card.metadata?.client_email && (
+            <span className="inline-flex items-center gap-1.5 truncate">
+              <Envelope size={12} />
+              {card.metadata.client_email}
+            </span>
+          )}
+          {!!card.metadata?.proposal_value && (
+            <span className="inline-flex items-center gap-1.5 font-medium text-accent">
+              <CurrencyDollar size={12} />
+              {formatCurrency(card.metadata.proposal_value)}
+            </span>
+          )}
+        </div>
+      )}
 
       {(hasBadges || assignees.length > 0) && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-0.5 text-xs text-muted-foreground">

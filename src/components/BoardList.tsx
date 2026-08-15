@@ -1,17 +1,21 @@
 "use client"
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { DotsThree, Kanban, MagnifyingGlass, Plus } from '@phosphor-icons/react/dist/ssr'
+import { Check, DotsThree, Kanban, MagnifyingGlass, Plus } from '@phosphor-icons/react/dist/ssr'
 import { supabase } from '../lib/supabaseClient'
 import { refreshSidebar } from '../lib/sidebarRefresh'
 import { Field } from './ui/Field'
 import { Button } from './ui/Button'
 import { ConfirmDialog } from './ui/ConfirmDialog'
+import { Confetti } from './ui/Confetti'
 import { useToast } from './ui/ToastProvider'
+import { BOARD_COLORS, boardColorClasses, boardColorLabel } from './board/boardColors'
+import type { BoardColor } from '../../supabase/types'
 
 type BoardRow = {
   id: string
   name: string
+  color: BoardColor
 }
 
 export default function BoardList({ workspaceId, userId }: { workspaceId: string; userId: string }) {
@@ -19,6 +23,9 @@ export default function BoardList({ workspaceId, userId }: { workspaceId: string
   const [columnCounts, setColumnCounts] = useState<Record<string, number>>({})
   const [query, setQuery] = useState('')
   const [name, setName] = useState('')
+  const [color, setColor] = useState<BoardColor>('accent')
+  const [celebrate, setCelebrate] = useState(false)
+  const [confettiActive, setConfettiActive] = useState(false)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -34,8 +41,9 @@ export default function BoardList({ workspaceId, userId }: { workspaceId: string
   async function fetchBoards() {
     const { data, error } = await supabase
       .from('boards')
-      .select('id, name')
+      .select('id, name, color')
       .eq('workspace_id', workspaceId)
+      .neq('kind', 'crm') // CRM has its own dedicated nav entry, not a generic board
       .order('created_at', { ascending: true })
     if (error) {
       setError(error.message)
@@ -61,10 +69,12 @@ export default function BoardList({ workspaceId, userId }: { workspaceId: string
     setError(null)
     const { error } = await supabase
       .from('boards')
-      .insert({ workspace_id: workspaceId, name, created_by: userId })
+      .insert({ workspace_id: workspaceId, name, color, created_by: userId })
     setCreating(false)
     if (error) return setError(error.message)
     setName('')
+    setColor('accent')
+    if (celebrate) setConfettiActive(true)
     fetchBoards()
     refreshSidebar()
   }
@@ -118,6 +128,38 @@ export default function BoardList({ workspaceId, userId }: { workspaceId: string
               onChange={(e) => setName(e.target.value)}
             />
           </div>
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">Cor</span>
+            <div className="flex h-11 items-center gap-1.5">
+              {BOARD_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setColor(c)}
+                  title={boardColorLabel(c)}
+                  aria-label={boardColorLabel(c)}
+                  aria-pressed={color === c}
+                  className={`flex h-6 w-6 items-center justify-center rounded-full ${boardColorClasses(c).dot} transition-transform hover:scale-110 ${
+                    color === c ? 'ring-2 ring-offset-2 ring-offset-background ring-primary/40' : ''
+                  }`}
+                >
+                  {color === c && <Check size={12} weight="bold" className="text-white" />}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="mb-[1px] flex h-11 cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={celebrate}
+              onChange={(e) => setCelebrate(e.target.checked)}
+              className="h-4 w-4 cursor-pointer accent-accent"
+            />
+            🎉 Confete ao criar
+          </label>
+
           <Button type="submit" disabled={creating || !name.trim()}>
             <Plus size={18} weight="bold" />
             Criar
@@ -221,8 +263,10 @@ export default function BoardList({ workspaceId, userId }: { workspaceId: string
                     href={`/app/board/${b.id}`}
                     className="flex items-center gap-3.5 rounded-xl border border-border bg-background p-5 transition-all hover:border-accent hover:shadow-sm"
                   >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
-                      <Kanban size={19} className="text-accent" />
+                    <span
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${boardColorClasses(b.color).icon}`}
+                    >
+                      <Kanban size={19} />
                     </span>
                     <div className="min-w-0">
                       <p className="truncate pr-5 text-sm font-medium text-foreground">{b.name}</p>
@@ -250,6 +294,8 @@ export default function BoardList({ workspaceId, userId }: { workspaceId: string
           }}
         />
       )}
+
+      {confettiActive && <Confetti onDone={() => setConfettiActive(false)} />}
     </div>
   )
 }

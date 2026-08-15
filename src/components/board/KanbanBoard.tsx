@@ -12,7 +12,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { SortableContext, arrayMove, horizontalListSortingStrategy } from '@dnd-kit/sortable'
-import { DownloadSimple, MagnifyingGlass, Plus, SquaresFour, Trash, X } from '@phosphor-icons/react/dist/ssr'
+import { DownloadSimple, MagnifyingGlass, Plus, SquaresFour, Trash, UploadSimple, X } from '@phosphor-icons/react/dist/ssr'
 import { supabase } from '../../lib/supabaseClient'
 import type { BoardColumn as BoardColumnType, Card, CardPriority } from '../../../supabase/types'
 import { BoardColumn } from './BoardColumn'
@@ -20,8 +20,10 @@ import { CardModal } from './CardModal'
 import { Field } from '../ui/Field'
 import { Select } from '../ui/Select'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { Confetti } from '../ui/Confetti'
 import { useToast } from '../ui/ToastProvider'
 import { toCsv, downloadCsv } from '../../lib/csv'
+import { ImportSpreadsheetModal } from '../crm/ImportSpreadsheetModal'
 
 const priorityLabel: Record<CardPriority, string> = { low: 'Baixa', medium: 'Média', high: 'Alta' }
 
@@ -39,11 +41,13 @@ export function KanbanBoard({
   workspaceId,
   userId,
   boardName,
+  crm = false,
 }: {
   boardId: string
   workspaceId: string
   userId: string
   boardName: string
+  crm?: boolean
 }) {
   const [columns, setColumns] = useState<BoardColumnType[]>([])
   const [cardsByColumn, setCardsByColumn] = useState<Record<string, Card[]>>({})
@@ -51,6 +55,7 @@ export function KanbanBoard({
   const [error, setError] = useState<string | null>(null)
   const [addingColumn, setAddingColumn] = useState(false)
   const [columnName, setColumnName] = useState('')
+  const [confettiActive, setConfettiActive] = useState(false)
   const [activeCard, setActiveCard] = useState<Card | null>(null)
   const [activeColumn, setActiveColumn] = useState<BoardColumnType | null>(null)
   const [openCard, setOpenCard] = useState<Card | null>(null)
@@ -64,6 +69,7 @@ export function KanbanBoard({
   const [pendingCardDelete, setPendingCardDelete] = useState<Card | null>(null)
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set())
   const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [importingSheet, setImportingSheet] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const toast = useToast()
 
@@ -292,6 +298,16 @@ export function KanbanBoard({
     fetchAll()
   }
 
+  function celebrateIfEnabled(columnId: string) {
+    if (columns.find((c) => c.id === columnId)?.celebrate_on_card) setConfettiActive(true)
+  }
+
+  async function toggleColumnCelebrate(columnId: string, next: boolean) {
+    setColumns((prev) => prev.map((c) => (c.id === columnId ? { ...c, celebrate_on_card: next } : c)))
+    const { error } = await supabase.from('board_columns').update({ celebrate_on_card: next }).eq('id', columnId)
+    if (error) setError(error.message)
+  }
+
   async function renameColumn(id: string, name: string) {
     setColumns((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c)))
     const { error } = await supabase.from('board_columns').update({ name }).eq('id', id)
@@ -326,6 +342,7 @@ export function KanbanBoard({
       .single()
     if (error) return setError(error.message)
     setCardsByColumn((prev) => ({ ...prev, [columnId]: [...(prev[columnId] ?? []), data as Card] }))
+    celebrateIfEnabled(columnId)
   }
 
   async function duplicateCard(source: Card) {
@@ -397,6 +414,7 @@ export function KanbanBoard({
       return next
     })
     clearSelection()
+    celebrateIfEnabled(destColumnId)
     const destColumnName = columns.find((c) => c.id === destColumnId)?.name ?? ''
     toast(`${ids.length} ${ids.length === 1 ? 'card movido' : 'cards movidos'} para "${destColumnName}".`)
 
@@ -512,6 +530,7 @@ export function KanbanBoard({
     destList.splice(insertAt, 0, { ...moved, column_id: destColId })
 
     setCardsByColumn((prev) => ({ ...prev, [sourceColId]: sourceList, [destColId]: destList }))
+    celebrateIfEnabled(destColId)
 
     supabase
       .from('cards')
@@ -576,7 +595,7 @@ export function KanbanBoard({
         </p>
       )}
 
-      {(totalCount > 0 || hasActiveFilter) && (
+      {(totalCount > 0 || hasActiveFilter || crm) && (
         <div className="mb-4 flex flex-wrap items-end gap-3">
           <div className="w-full sm:w-56">
             <Field
@@ -628,12 +647,25 @@ export function KanbanBoard({
               {visibleCount} de {totalCount} cards
             </p>
           )}
+          {crm && (
+            <button
+              type="button"
+              onClick={() => setImportingSheet(true)}
+              title="Importa clientes de uma planilha .xlsx/.csv"
+              className="ml-auto flex h-11 items-center gap-1.5 rounded-lg border border-border px-3 text-sm text-foreground hover:border-accent hover:text-accent"
+            >
+              <UploadSimple size={16} />
+              Importar planilha
+            </button>
+          )}
           {totalCount > 0 && (
             <button
               type="button"
               onClick={exportCsv}
               title={hasActiveFilter ? 'Exporta os cards filtrados' : 'Exporta todos os cards do board'}
-              className="ml-auto flex h-11 items-center gap-1.5 rounded-lg border border-border px-3 text-sm text-foreground hover:border-accent hover:text-accent"
+              className={`flex h-11 items-center gap-1.5 rounded-lg border border-border px-3 text-sm text-foreground hover:border-accent hover:text-accent ${
+                crm ? '' : 'ml-auto'
+              }`}
             >
               <DownloadSimple size={16} />
               Exportar CSV
@@ -714,9 +746,11 @@ export function KanbanBoard({
                 members={members}
                 memberAvatars={memberAvatars}
                 selectedCardIds={selectedCardIds}
+                crm={crm}
                 onToggleSelect={toggleCardSelection}
                 onRename={renameColumn}
                 onDelete={requestDeleteColumn}
+                onToggleCelebrate={toggleColumnCelebrate}
                 onAddCard={addCard}
                 onDeleteCard={requestDeleteCard}
                 onOpenCard={setOpenCard}
@@ -785,6 +819,7 @@ export function KanbanBoard({
           card={openCard}
           workspaceId={workspaceId}
           userId={userId}
+          crm={crm}
           onClose={() => {
             fetchCardMeta([openCard.id])
             setOpenCard(null)
@@ -792,6 +827,18 @@ export function KanbanBoard({
           onUpdated={handleCardUpdated}
           onDeleted={deleteCard}
           onDuplicate={duplicateCard}
+        />
+      )}
+
+      {importingSheet && (
+        <ImportSpreadsheetModal
+          columns={columns}
+          onClose={() => setImportingSheet(false)}
+          onImported={(count) => {
+            setImportingSheet(false)
+            fetchAll()
+            toast(`${count} ${count === 1 ? 'cliente importado' : 'clientes importados'}.`)
+          }}
         />
       )}
 
@@ -829,6 +876,8 @@ export function KanbanBoard({
           onConfirm={confirmBulkDelete}
         />
       )}
+
+      {confettiActive && <Confetti onDone={() => setConfettiActive(false)} />}
     </div>
   )
 }

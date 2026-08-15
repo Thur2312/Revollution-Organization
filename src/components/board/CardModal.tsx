@@ -5,8 +5,11 @@ import {
   CaretDown,
   Check,
   Copy,
+  CurrencyDollar,
+  Envelope,
   Flag,
   Paperclip,
+  Phone,
   Plus,
   Trash,
   X,
@@ -24,8 +27,10 @@ import type {
   Profile,
 } from '../../../supabase/types'
 import { Avatar } from '../ui/Avatar'
+import { Field } from '../ui/Field'
 import { labelColor } from './labelColors'
 import { renderMarkdownLite } from '../../lib/markdownLite'
+import { parseProposalValue } from '../../lib/crm/columnMatch'
 
 type WorkspaceMember = { id: string; name: string; avatarUrl: string | null }
 
@@ -96,6 +101,7 @@ export function CardModal({
   card,
   workspaceId,
   userId,
+  crm = false,
   onClose,
   onUpdated,
   onDeleted,
@@ -104,6 +110,7 @@ export function CardModal({
   card: Card
   workspaceId: string
   userId: string
+  crm?: boolean
   onClose: () => void
   onUpdated: (card: Card) => void
   onDeleted: (id: string) => void
@@ -333,6 +340,9 @@ export function CardModal({
     const next: CardMetadata = { ...metadata, ...patch }
     if (patch.due_date === '') delete next.due_date
     if (patch.priority === undefined && 'priority' in patch) delete next.priority
+    if (patch.client_phone === '') delete next.client_phone
+    if (patch.client_email === '') delete next.client_email
+    if (patch.proposal_value !== undefined && !patch.proposal_value) delete next.proposal_value
     setMetadata(next)
     const { error } = await supabase.from('cards').update({ metadata: next }).eq('id', card.id)
     if (error) return setError(error.message)
@@ -577,6 +587,39 @@ export function CardModal({
               />
             </div>
           </div>
+
+          {crm && (
+            <section className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field
+                label="Telefone"
+                name="client_phone"
+                icon={<Phone size={15} />}
+                value={metadata.client_phone ?? ''}
+                onChange={(e) => setMetadata((prev) => ({ ...prev, client_phone: e.target.value }))}
+                onBlur={(e) => saveMetadata({ client_phone: e.target.value.trim() })}
+              />
+              <Field
+                label="E-mail"
+                name="client_email"
+                type="email"
+                icon={<Envelope size={15} />}
+                value={metadata.client_email ?? ''}
+                onChange={(e) => setMetadata((prev) => ({ ...prev, client_email: e.target.value }))}
+                onBlur={(e) => saveMetadata({ client_email: e.target.value.trim() })}
+              />
+              <Field
+                label="Valor da proposta"
+                name="proposal_value"
+                icon={<CurrencyDollar size={15} />}
+                value={metadata.proposal_value ? String(metadata.proposal_value) : ''}
+                placeholder="0,00"
+                onChange={(e) =>
+                  setMetadata((prev) => ({ ...prev, proposal_value: parseProposalValue(e.target.value) }))
+                }
+                onBlur={(e) => saveMetadata({ proposal_value: parseProposalValue(e.target.value) })}
+              />
+            </section>
+          )}
 
           {members.length > 0 && (
             <section className="mb-6">
