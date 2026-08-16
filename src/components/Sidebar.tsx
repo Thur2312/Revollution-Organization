@@ -21,7 +21,6 @@ import {
 } from '@phosphor-icons/react/dist/ssr'
 import { supabase } from '../lib/supabaseClient'
 import { SIDEBAR_REFRESH_EVENT } from '../lib/sidebarRefresh'
-import { markSessionEnd } from '../lib/timesheet'
 import { useTheme } from '../lib/ThemeContext'
 import { Logo, LogoMark } from './ui/Logo'
 import { ThemeToggle } from './ui/ThemeToggle'
@@ -44,7 +43,6 @@ export function Sidebar({ userId, isPlatformAdmin = false }: { userId: string; i
   const { theme, toggleTheme } = useTheme()
 
   async function handleSignOut() {
-    await markSessionEnd(userId)
     await supabase.auth.signOut()
     router.push('/')
   }

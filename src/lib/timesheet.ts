@@ -34,23 +34,16 @@ export async function markSessionStart(userId: string) {
   }
 }
 
-// Called periodically while the app is open, so a closed tab still leaves a
-// reasonably accurate "last active" timestamp even without an explicit sign-out.
+// Called periodically while the app is open. There's no reliable way to run
+// code exactly when a browser/tab is closed, so this heartbeat IS the end-of
+// -session signal: once it stops (tab closed), last_seen_at simply stops
+// moving, and the timesheet view treats that frozen timestamp as when the
+// session ended. Signing out does NOT stamp an end — only closing the
+// browser does, per how this is meant to track "time on the platform".
 export async function markSessionHeartbeat(userId: string) {
   await supabase
     .from('time_entries')
     .update({ last_seen_at: new Date().toISOString() })
-    .eq('user_id', userId)
-    .eq('work_date', todayLocal())
-}
-
-// Called on explicit sign-out — must run before supabase.auth.signOut(),
-// otherwise the request loses its authenticated RLS context.
-export async function markSessionEnd(userId: string) {
-  const now = new Date().toISOString()
-  await supabase
-    .from('time_entries')
-    .update({ ended_at: now, last_seen_at: now })
     .eq('user_id', userId)
     .eq('work_date', todayLocal())
 }
