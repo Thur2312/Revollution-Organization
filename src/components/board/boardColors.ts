@@ -76,3 +76,8 @@ const COLUMN_COLOR_CLASSES: Record<BoardColor, { bg: string; text: string; subtl
 export function columnColorAccent(color: BoardColor | null | undefined) {
   return color ? COLUMN_COLOR_CLASSES[color] : null
 }
+
+// Fallback header color for columns with no color picked yet — every column
+// still gets the solid pill-header treatment (matching the reference board
+// style), it just defaults to neutral slate instead of a chosen hue.
+export const DEFAULT_COLUMN_ACCENT = { bg: 'bg-slate-400', text: 'text-white', subtle: 'text-white/70' }

@@ -29,6 +29,8 @@ export function BoardCard({
   memberAvatars,
   selected,
   crm = false,
+  columnName,
+  accentBg,
   onToggleSelect,
   onDelete,
   onOpen,
@@ -39,6 +41,8 @@ export function BoardCard({
   memberAvatars: Record<string, string | null>
   selected: boolean
   crm?: boolean
+  columnName?: string
+  accentBg?: string
   onToggleSelect: (id: string) => void
   onDelete: (id: string) => void
   onOpen: (card: Card) => void
@@ -119,6 +123,13 @@ export function BoardCard({
           <X size={14} />
         </button>
       </div>
+
+      {columnName && accentBg && (
+        <div className="flex items-center gap-1.5 pl-0.5">
+          <span className={`h-3 w-1 shrink-0 rounded-full ${accentBg}`} aria-hidden="true" />
+          <span className="truncate text-xs text-muted-foreground">{columnName}</span>
+        </div>
+      )}
 
       {crm && (card.metadata?.client_phone || card.metadata?.client_email || card.metadata?.proposal_value) && (
         <div className="flex flex-col gap-1 pl-0.5 text-xs text-muted-foreground">

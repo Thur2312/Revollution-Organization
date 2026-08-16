@@ -6,7 +6,14 @@ import { CSS } from '@dnd-kit/utilities'
 import { Check, DotsThree, Plus, X } from '@phosphor-icons/react/dist/ssr'
 import type { BoardColumn as BoardColumnType, BoardColor, Card } from '../../../supabase/types'
 import { BoardCard } from './BoardCard'
-import { BOARD_COLORS, boardColorClasses, boardColorLabel, columnColorAccent, crmStageAccent } from './boardColors'
+import {
+  BOARD_COLORS,
+  DEFAULT_COLUMN_ACCENT,
+  boardColorClasses,
+  boardColorLabel,
+  columnColorAccent,
+  crmStageAccent,
+} from './boardColors'
 import type { CardMeta } from './KanbanBoard'
 
 export function BoardColumn({
@@ -78,6 +85,11 @@ export function BoardColumn({
   }
 
   const accent = crm ? crmStageAccent(column.position) : columnColorAccent(column.color)
+  // Every column gets a solid pill header — colored ones use their accent,
+  // uncolored regular columns fall back to neutral slate. The column BODY
+  // stays neutral either way; only the header pill and each card's status
+  // tag carry the color (see the reference board this mirrors).
+  const headerAccent = accent ?? DEFAULT_COLUMN_ACCENT
 
   return (
     <div
@@ -87,14 +99,12 @@ export function BoardColumn({
         transition,
         opacity: isDragging ? 0.5 : 1,
       }}
-      className={`flex w-72 shrink-0 flex-col overflow-hidden rounded-xl border ${
-        accent ? `border-transparent ${accent.bg}` : 'border-border bg-surface'
-      }`}
+      className="flex w-72 shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-surface"
     >
       <div
         {...(editingName ? {} : attributes)}
         {...(editingName ? {} : listeners)}
-        className="flex items-center justify-between gap-2 px-3 py-2.5"
+        className={`mx-2 mt-2 flex items-center justify-between gap-2 rounded-lg px-3 py-2 ${headerAccent.bg}`}
       >
         {editingName ? (
           <input
@@ -109,22 +119,18 @@ export function BoardColumn({
                 setEditingName(false)
               }
             }}
-            className="w-full rounded-md border border-accent bg-background px-2 py-1 text-sm font-medium text-foreground outline-none"
+            className="w-full rounded-md bg-white/90 px-2 py-1 text-sm font-medium text-foreground outline-none"
           />
         ) : (
           <div className="flex min-w-0 items-center gap-2">
             <button
               onClick={() => setEditingName(true)}
-              className={`truncate text-sm font-medium hover:opacity-80 ${accent?.text ?? 'text-foreground hover:text-primary'}`}
+              className={`truncate text-sm font-semibold hover:opacity-80 ${headerAccent.text}`}
             >
               {column.name}
             </button>
             {cards.length > 0 && (
-              <span
-                className={`shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-medium leading-none ${
-                  accent ? `bg-black/10 ${accent.subtle}` : 'bg-border/60 text-muted-foreground'
-                }`}
-              >
+              <span className={`shrink-0 rounded-full bg-black/10 px-1.5 py-0.5 text-[11px] font-medium leading-none ${headerAccent.subtle}`}>
                 {cards.length}
               </span>
             )}
@@ -133,11 +139,7 @@ export function BoardColumn({
         <div className="relative shrink-0">
           <button
             onClick={() => setMenuOpen((v) => !v)}
-            className={`rounded p-1 ${
-              accent
-                ? `${accent.subtle} hover:bg-black/10 hover:opacity-100`
-                : 'text-muted-foreground hover:bg-border/60 hover:text-foreground'
-            }`}
+            className={`rounded p-1 ${headerAccent.subtle} hover:bg-black/10 hover:opacity-100`}
             aria-label="Opções da coluna"
           >
             <DotsThree size={18} weight="bold" />
@@ -226,6 +228,8 @@ export function BoardColumn({
               onDelete={onDeleteCard}
               onOpen={onOpenCard}
               crm={crm}
+              columnName={column.name}
+              accentBg={headerAccent.bg}
             />
           ))}
         </SortableContext>
@@ -275,11 +279,7 @@ export function BoardColumn({
         ) : (
           <button
             onClick={() => setAddingCard(true)}
-            className={`flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm ${
-              accent
-                ? `${accent.subtle} hover:bg-black/10 hover:opacity-100`
-                : 'text-muted-foreground hover:bg-border/40 hover:text-foreground'
-            }`}
+            className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-border/40 hover:text-foreground"
           >
             <Plus size={16} />
             {crm ? 'Adicionar cliente' : 'Adicionar card'}
