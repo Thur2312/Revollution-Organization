@@ -20,7 +20,7 @@ const variants: Record<Variant, string> = {
     'hover:-translate-y-px hover:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35),0_4px_10px_rgba(67,15,28,0.22)] ' +
     'hover:from-[#ddb98c] hover:to-[#d1ab78]',
   secondary:
-    'bg-gradient-to-b from-[#5c1f30] to-primary text-primary-foreground ' +
+    'bg-gradient-to-b from-[#5c1f30] to-wine text-wine-foreground ' +
     'shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_1px_2px_rgba(67,15,28,0.25)] ' +
     'hover:-translate-y-px hover:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_4px_10px_rgba(67,15,28,0.3)] ' +
     'hover:from-[#6b2639] hover:to-[#4d1220]',

@@ -14,7 +14,7 @@ import {
 import { SortableContext, arrayMove, horizontalListSortingStrategy } from '@dnd-kit/sortable'
 import { DownloadSimple, MagnifyingGlass, Plus, SquaresFour, Trash, UploadSimple, X } from '@phosphor-icons/react/dist/ssr'
 import { supabase } from '../../lib/supabaseClient'
-import type { BoardColumn as BoardColumnType, Card, CardPriority } from '../../../supabase/types'
+import type { BoardColor, BoardColumn as BoardColumnType, Card, CardPriority } from '../../../supabase/types'
 import { BoardColumn } from './BoardColumn'
 import { CardModal } from './CardModal'
 import { Field } from '../ui/Field'
@@ -305,6 +305,12 @@ export function KanbanBoard({
   async function toggleColumnCelebrate(columnId: string, next: boolean) {
     setColumns((prev) => prev.map((c) => (c.id === columnId ? { ...c, celebrate_on_card: next } : c)))
     const { error } = await supabase.from('board_columns').update({ celebrate_on_card: next }).eq('id', columnId)
+    if (error) setError(error.message)
+  }
+
+  async function changeColumnColor(columnId: string, color: BoardColor | null) {
+    setColumns((prev) => prev.map((c) => (c.id === columnId ? { ...c, color } : c)))
+    const { error } = await supabase.from('board_columns').update({ color }).eq('id', columnId)
     if (error) setError(error.message)
   }
 
@@ -751,6 +757,7 @@ export function KanbanBoard({
                 onRename={renameColumn}
                 onDelete={requestDeleteColumn}
                 onToggleCelebrate={toggleColumnCelebrate}
+                onChangeColor={changeColumnColor}
                 onAddCard={addCard}
                 onDeleteCard={requestDeleteCard}
                 onOpenCard={setOpenCard}

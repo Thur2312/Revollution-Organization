@@ -510,7 +510,7 @@ export function CardModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-primary/40 px-4 py-10 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-wine/40 px-4 py-10 backdrop-blur-sm"
       style={{ animation: 'backdrop-in 150ms ease-out' }}
       onClick={onClose}
     >

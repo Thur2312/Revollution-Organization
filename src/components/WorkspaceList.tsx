@@ -30,7 +30,7 @@ const roleLabel: Record<MemberRole, string> = {
 function monogramStyle(id: string) {
   let hash = 0
   for (let i = 0; i < id.length; i++) hash = (hash + id.charCodeAt(i)) % 2
-  return hash === 0 ? 'bg-primary text-primary-foreground' : 'bg-accent text-accent-foreground'
+  return hash === 0 ? 'bg-wine text-wine-foreground' : 'bg-accent text-accent-foreground'
 }
 
 export default function WorkspaceList({ userId }: { userId: string }) {

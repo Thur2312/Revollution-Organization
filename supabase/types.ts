@@ -189,6 +189,7 @@ export interface BoardColumn {
   name: string;
   position: number;
   celebrate_on_card: boolean;
+  color: BoardColor | null;
   created_at: string;
 }
 
@@ -197,11 +198,13 @@ export interface BoardColumnInsert {
   name: string;
   position: number;
   celebrate_on_card?: boolean;
+  color?: BoardColor | null;
 }
 
 export interface BoardColumnUpdate {
   name?: string;
   position?: number;
+  color?: BoardColor | null;
   celebrate_on_card?: boolean;
 }
 

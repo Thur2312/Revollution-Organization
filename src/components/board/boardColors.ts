@@ -43,11 +43,14 @@ export function boardColorClasses(color: BoardColor | null | undefined) {
 // body itself is filled solid with `bg`; `text`/`subtle` are the readable
 // foreground colors for that fill — cards keep their own light background
 // (see BoardCard), so they stay visually distinct from the colored column.
+// `text`/`subtle` use the fixed `wine`/white tokens (not the theme-flipping
+// `primary`) — these sit on a solid saturated swatch regardless of light or
+// dark mode, so their contrast partner must stay constant too.
 const CRM_STAGE_CLASSES: { bg: string; text: string; subtle: string }[] = [
   { bg: 'bg-sky-500', text: 'text-white', subtle: 'text-white/70' }, // Prospecção
   { bg: 'bg-violet-500', text: 'text-white', subtle: 'text-white/70' }, // Abordagem
-  { bg: 'bg-accent', text: 'text-primary', subtle: 'text-primary/60' }, // Apresentação
-  { bg: 'bg-amber-500', text: 'text-primary', subtle: 'text-primary/60' }, // Acompanhamento (follow-up)
+  { bg: 'bg-accent', text: 'text-wine', subtle: 'text-wine/60' }, // Apresentação
+  { bg: 'bg-amber-500', text: 'text-wine', subtle: 'text-wine/60' }, // Acompanhamento (follow-up)
   { bg: 'bg-rose-500', text: 'text-white', subtle: 'text-white/70' }, // Negociação
   { bg: 'bg-emerald-500', text: 'text-white', subtle: 'text-white/70' }, // Fechamento
   { bg: 'bg-slate-500', text: 'text-white', subtle: 'text-white/70' }, // Pós-venda
@@ -55,4 +58,21 @@ const CRM_STAGE_CLASSES: { bg: string; text: string; subtle: string }[] = [
 
 export function crmStageAccent(position: number) {
   return CRM_STAGE_CLASSES[position % CRM_STAGE_CLASSES.length]
+}
+
+// Same solid-fill treatment as the CRM stages, but keyed by the user-picked
+// BoardColor for regular (non-CRM) columns instead of position — see the
+// "Cor da coluna" picker in BoardColumn's "⋯" menu.
+const COLUMN_COLOR_CLASSES: Record<BoardColor, { bg: string; text: string; subtle: string }> = {
+  accent: { bg: 'bg-accent', text: 'text-wine', subtle: 'text-wine/60' },
+  rose: { bg: 'bg-rose-500', text: 'text-white', subtle: 'text-white/70' },
+  amber: { bg: 'bg-amber-500', text: 'text-wine', subtle: 'text-wine/60' },
+  emerald: { bg: 'bg-emerald-500', text: 'text-white', subtle: 'text-white/70' },
+  sky: { bg: 'bg-sky-500', text: 'text-white', subtle: 'text-white/70' },
+  violet: { bg: 'bg-violet-500', text: 'text-white', subtle: 'text-white/70' },
+  slate: { bg: 'bg-slate-500', text: 'text-white', subtle: 'text-white/70' },
+}
+
+export function columnColorAccent(color: BoardColor | null | undefined) {
+  return color ? COLUMN_COLOR_CLASSES[color] : null
 }

@@ -12,15 +12,19 @@ import {
   Envelope,
   Gauge,
   Kanban,
+  Moon,
   SignOut,
   SquaresFour,
+  Sun,
   UserCircle,
   UsersThree,
 } from '@phosphor-icons/react/dist/ssr'
 import { supabase } from '../lib/supabaseClient'
 import { SIDEBAR_REFRESH_EVENT } from '../lib/sidebarRefresh'
 import { markSessionEnd } from '../lib/timesheet'
+import { useTheme } from '../lib/ThemeContext'
 import { Logo, LogoMark } from './ui/Logo'
+import { ThemeToggle } from './ui/ThemeToggle'
 import { NotificationBell } from './NotificationBell'
 import { boardColorClasses } from './board/boardColors'
 import type { BoardColor } from '../../supabase/types'
@@ -31,12 +35,13 @@ type WorkspaceRow = { id: string; name: string }
 function monogramStyle(id: string) {
   let hash = 0
   for (let i = 0; i < id.length; i++) hash = (hash + id.charCodeAt(i)) % 2
-  return hash === 0 ? 'bg-primary text-primary-foreground' : 'bg-accent text-accent-foreground'
+  return hash === 0 ? 'bg-wine text-wine-foreground' : 'bg-accent text-accent-foreground'
 }
 
 export function Sidebar({ userId, isPlatformAdmin = false }: { userId: string; isPlatformAdmin?: boolean }) {
   const pathname = usePathname()
   const router = useRouter()
+  const { theme, toggleTheme } = useTheme()
 
   async function handleSignOut() {
     await markSessionEnd(userId)
@@ -207,6 +212,7 @@ export function Sidebar({ userId, isPlatformAdmin = false }: { userId: string; i
           ))}
         </div>
         <div className="mt-auto flex flex-col items-center gap-3">
+          <ThemeToggle />
           <Link
             href="/app/profile"
             title="Perfil"
@@ -364,6 +370,13 @@ export function Sidebar({ userId, isPlatformAdmin = false }: { userId: string; i
           <UserCircle size={17} />
           Perfil
         </Link>
+        <button
+          onClick={toggleTheme}
+          className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-foreground transition-colors hover:bg-surface"
+        >
+          {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+          {theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+        </button>
         <button
           onClick={handleSignOut}
           className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-surface hover:text-destructive"

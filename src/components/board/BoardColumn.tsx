@@ -3,10 +3,10 @@ import { useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { DotsThree, Plus, X } from '@phosphor-icons/react/dist/ssr'
-import type { BoardColumn as BoardColumnType, Card } from '../../../supabase/types'
+import { Check, DotsThree, Plus, X } from '@phosphor-icons/react/dist/ssr'
+import type { BoardColumn as BoardColumnType, BoardColor, Card } from '../../../supabase/types'
 import { BoardCard } from './BoardCard'
-import { crmStageAccent } from './boardColors'
+import { BOARD_COLORS, boardColorClasses, boardColorLabel, columnColorAccent, crmStageAccent } from './boardColors'
 import type { CardMeta } from './KanbanBoard'
 
 export function BoardColumn({
@@ -24,6 +24,7 @@ export function BoardColumn({
   onDeleteCard,
   onOpenCard,
   onToggleCelebrate,
+  onChangeColor,
 }: {
   column: BoardColumnType
   cards: Card[]
@@ -39,6 +40,7 @@ export function BoardColumn({
   onDeleteCard: (id: string) => void
   onOpenCard: (card: Card) => void
   onToggleCelebrate: (columnId: string, next: boolean) => void
+  onChangeColor: (columnId: string, color: BoardColor | null) => void
 }) {
   // Two distinct id namespaces on purpose: `column.id` is the drop target
   // cards land on (read by KanbanBoard's card drag-end logic), while
@@ -75,7 +77,7 @@ export function BoardColumn({
     setAddingCard(false)
   }
 
-  const stageAccent = crm ? crmStageAccent(column.position) : null
+  const accent = crm ? crmStageAccent(column.position) : columnColorAccent(column.color)
 
   return (
     <div
@@ -86,7 +88,7 @@ export function BoardColumn({
         opacity: isDragging ? 0.5 : 1,
       }}
       className={`flex w-72 shrink-0 flex-col overflow-hidden rounded-xl border ${
-        stageAccent ? `border-transparent ${stageAccent.bg}` : 'border-border bg-surface'
+        accent ? `border-transparent ${accent.bg}` : 'border-border bg-surface'
       }`}
     >
       <div
@@ -113,14 +115,14 @@ export function BoardColumn({
           <div className="flex min-w-0 items-center gap-2">
             <button
               onClick={() => setEditingName(true)}
-              className={`truncate text-sm font-medium hover:opacity-80 ${stageAccent?.text ?? 'text-foreground hover:text-primary'}`}
+              className={`truncate text-sm font-medium hover:opacity-80 ${accent?.text ?? 'text-foreground hover:text-primary'}`}
             >
               {column.name}
             </button>
             {cards.length > 0 && (
               <span
                 className={`shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-medium leading-none ${
-                  stageAccent ? `bg-black/10 ${stageAccent.subtle}` : 'bg-border/60 text-muted-foreground'
+                  accent ? `bg-black/10 ${accent.subtle}` : 'bg-border/60 text-muted-foreground'
                 }`}
               >
                 {cards.length}
@@ -132,8 +134,8 @@ export function BoardColumn({
           <button
             onClick={() => setMenuOpen((v) => !v)}
             className={`rounded p-1 ${
-              stageAccent
-                ? `${stageAccent.subtle} hover:bg-black/10 hover:opacity-100`
+              accent
+                ? `${accent.subtle} hover:bg-black/10 hover:opacity-100`
                 : 'text-muted-foreground hover:bg-border/60 hover:text-foreground'
             }`}
             aria-label="Opções da coluna"
@@ -145,6 +147,46 @@ export function BoardColumn({
               className="absolute right-0 top-full z-10 mt-1 w-48 rounded-lg border border-border bg-background py-1 shadow-sm"
               style={{ animation: 'dropdown-in 150ms ease-out' }}
             >
+              {!crm && (
+                <div className="px-3 py-1.5">
+                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">Cor da coluna</p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        onChangeColor(column.id, null)
+                      }}
+                      title="Sem cor"
+                      aria-label="Sem cor"
+                      aria-pressed={!column.color}
+                      className={`flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-muted-foreground/50 transition-transform hover:scale-110 ${
+                        !column.color ? 'ring-2 ring-offset-1 ring-offset-background ring-primary/40' : ''
+                      }`}
+                    >
+                      {!column.color && <Check size={10} weight="bold" className="text-foreground" />}
+                    </button>
+                    {BOARD_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false)
+                          onChangeColor(column.id, c)
+                        }}
+                        title={boardColorLabel(c)}
+                        aria-label={boardColorLabel(c)}
+                        aria-pressed={column.color === c}
+                        className={`flex h-5 w-5 items-center justify-center rounded-full ${boardColorClasses(c).dot} transition-transform hover:scale-110 ${
+                          column.color === c ? 'ring-2 ring-offset-1 ring-offset-background ring-primary/40' : ''
+                        }`}
+                      >
+                        {column.color === c && <Check size={10} weight="bold" className="text-white" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {crm && (
                 <button
                   onClick={() => {
@@ -234,8 +276,8 @@ export function BoardColumn({
           <button
             onClick={() => setAddingCard(true)}
             className={`flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm ${
-              stageAccent
-                ? `${stageAccent.subtle} hover:bg-black/10 hover:opacity-100`
+              accent
+                ? `${accent.subtle} hover:bg-black/10 hover:opacity-100`
                 : 'text-muted-foreground hover:bg-border/40 hover:text-foreground'
             }`}
           >

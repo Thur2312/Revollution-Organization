@@ -99,7 +99,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-start justify-center bg-primary/40 px-4 pt-[12vh] backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-start justify-center bg-wine/40 px-4 pt-[12vh] backdrop-blur-sm"
       style={{ animation: 'backdrop-in 150ms ease-out' }}
       onClick={onClose}
     >

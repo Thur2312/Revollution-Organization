@@ -117,7 +117,7 @@ export default function ProfilePage() {
           title="Trocar foto"
         >
           <Avatar name={profile.full_name || profile.email} imageUrl={profile.avatar_url} size={48} />
-          <span className="absolute inset-0 flex items-center justify-center rounded-full bg-primary/0 text-transparent transition-colors group-hover:bg-primary/50 group-hover:text-white">
+          <span className="absolute inset-0 flex items-center justify-center rounded-full bg-wine/0 text-transparent transition-colors group-hover:bg-wine/50 group-hover:text-white">
             <Camera size={18} />
           </span>
         </button>

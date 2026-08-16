@@ -25,7 +25,7 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-primary/40 px-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-wine/40 px-4 backdrop-blur-sm"
       style={{ animation: 'backdrop-in 150ms ease-out' }}
       onClick={onCancel}
     >

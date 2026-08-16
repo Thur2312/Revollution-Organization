@@ -14,6 +14,13 @@
   --color-primary: #430f1c;
   --color-primary-foreground: #ffffff;
 
+  /* Fixed brand wine — unlike --color-primary (which flips to a light ink
+     color in dark mode so headings stay readable), this is for the couple
+     of spots that paint an actual solid wine fill (avatar-initial chips,
+     the Button "secondary" gradient) and must look the same in both themes. */
+  --color-wine: #430f1c;
+  --color-wine-foreground: #ffffff;
+
   --color-accent: #c9a26b;
   --color-accent-foreground: #2b0a15;
 
@@ -27,6 +34,28 @@
   --color-destructive: #dc2626;
   --color-destructive-foreground: #ffffff;
   --color-warning: #b45309;
+}
+
+/* Dark theme — same wine/gold brand palette as the landing page (WINE
+   #430F1C, DEEP #2B0A15, GOLD #C9A26B, GOLD_LIGHT #E6C98D, CREAM #F3EAD9),
+   applied to the app's semantic tokens instead of a generic gray dark mode.
+   Every component already renders through these CSS variables (bg-surface,
+   text-foreground, etc.), so overriding them here is enough to re-theme the
+   whole app — no per-component `dark:` classes needed. */
+.dark {
+  --color-background: #2b0a15;
+  --color-surface: #3d1524;
+  --color-border: #5c3346;
+
+  --color-foreground: #f3ead9;
+  --color-muted-foreground: #c9b8a8;
+
+  --color-primary: #f3ead9;
+  --color-primary-foreground: #2b0a15;
+
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
+  --color-warning: #f59e0b;
 }
 
 html,
