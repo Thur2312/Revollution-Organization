@@ -66,6 +66,7 @@ export function KanbanBoard({
   const [filterAssignee, setFilterAssignee] = useState('')
   const [filterPriority, setFilterPriority] = useState<CardPriority | ''>('')
   const [pendingColumnDelete, setPendingColumnDelete] = useState<BoardColumnType | null>(null)
+  const [pendingColumnClear, setPendingColumnClear] = useState<BoardColumnType | null>(null)
   const [pendingCardDelete, setPendingCardDelete] = useState<Card | null>(null)
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set())
   const [bulkDeleting, setBulkDeleting] = useState(false)
@@ -337,6 +338,20 @@ export function KanbanBoard({
   function requestDeleteColumn(id: string) {
     const column = columns.find((c) => c.id === id)
     if (column) setPendingColumnDelete(column)
+  }
+
+  async function clearColumnCards(id: string) {
+    setCardsByColumn((prev) => ({ ...prev, [id]: [] }))
+    const { error } = await supabase.from('cards').delete().eq('column_id', id)
+    if (error) {
+      setError(error.message)
+      fetchAll()
+    }
+  }
+
+  function requestClearColumn(id: string) {
+    const column = columns.find((c) => c.id === id)
+    if (column) setPendingColumnClear(column)
   }
 
   async function addCard(columnId: string, title: string) {
@@ -756,6 +771,7 @@ export function KanbanBoard({
                 onToggleSelect={toggleCardSelection}
                 onRename={renameColumn}
                 onDelete={requestDeleteColumn}
+                onClearColumn={requestClearColumn}
                 onToggleCelebrate={toggleColumnCelebrate}
                 onChangeColor={changeColumnColor}
                 onAddCard={addCard}
@@ -858,6 +874,20 @@ export function KanbanBoard({
             deleteColumn(pendingColumnDelete.id)
             toast(`Coluna "${pendingColumnDelete.name}" excluída.`)
             setPendingColumnDelete(null)
+          }}
+        />
+      )}
+
+      {pendingColumnClear && (
+        <ConfirmDialog
+          title={`Excluir todos os cards da coluna "${pendingColumnClear.name}"?`}
+          description="A coluna continuará existindo, vazia. Checklists, comentários e anexos desses cards também serão excluídos. Essa ação não pode ser desfeita."
+          onCancel={() => setPendingColumnClear(null)}
+          onConfirm={() => {
+            const count = cardsByColumn[pendingColumnClear.id]?.length ?? 0
+            clearColumnCards(pendingColumnClear.id)
+            toast(`${count} ${count === 1 ? 'card excluído' : 'cards excluídos'} de "${pendingColumnClear.name}".`)
+            setPendingColumnClear(null)
           }}
         />
       )}

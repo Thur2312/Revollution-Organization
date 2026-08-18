@@ -7,7 +7,13 @@ import { useAppSession } from '../../lib/AppSessionContext'
 import type { BoardColumn as BoardColumnType, CardInsert } from '../../../supabase/types'
 import { Button } from '../ui/Button'
 import { Select } from '../ui/Select'
-import { guessColumnMapping, parseProposalValue, type ColumnMapping, type CrmField } from '../../lib/crm/columnMatch'
+import {
+  findLastNameHeader,
+  guessColumnMapping,
+  parseProposalValue,
+  type ColumnMapping,
+  type CrmField,
+} from '../../lib/crm/columnMatch'
 
 const FIELD_LABEL: Record<CrmField, string> = {
   client_name: 'Nome do cliente',
@@ -20,14 +26,53 @@ const FIELD_ORDER: CrmField[] = ['client_name', 'client_phone', 'client_email', 
 
 type ParsedSheet = { headers: string[]; rows: string[][] }
 
+// Some exported spreadsheets (ticketing/event platforms in particular) ship
+// a stale <dimension> that only covers the first column, even though every
+// column's cells are actually present in the sheet — sheet_to_json trusts
+// that range and silently drops everything past it. Recompute the true
+// range from the real cell addresses before reading, expanding only.
+function fixStaleRange(sheet: XLSX.WorkSheet) {
+  let maxRow = 0
+  let maxCol = 0
+  for (const key of Object.keys(sheet)) {
+    if (key[0] === '!') continue
+    const { r, c } = XLSX.utils.decode_cell(key)
+    if (r > maxRow) maxRow = r
+    if (c > maxCol) maxCol = c
+  }
+  const current = sheet['!ref'] ? XLSX.utils.decode_range(sheet['!ref']) : null
+  if (!current || current.e.c < maxCol || current.e.r < maxRow) {
+    sheet['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxRow, c: maxCol } })
+  }
+}
+
+function countNonEmpty(row: unknown[]): number {
+  return row.reduce((n: number, v) => n + (String(v ?? '').trim() !== '' ? 1 : 0), 0)
+}
+
 async function parseFile(file: File): Promise<ParsedSheet> {
   const buffer = await file.arrayBuffer()
   const workbook = XLSX.read(buffer, { type: 'array' })
   const sheet = workbook.Sheets[workbook.SheetNames[0]]
+  fixStaleRange(sheet)
   const raw = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' })
-  const headers = (raw[0] ?? []).map((v) => String(v).trim())
+
+  // Event/ticketing exports often prepend a few metadata rows (event name,
+  // date, venue) before the real header row. The real header is the one
+  // with the most populated cells within the first stretch of the sheet.
+  let headerIdx = 0
+  let headerCount = -1
+  for (let i = 0; i < Math.min(30, raw.length); i++) {
+    const count = countNonEmpty(raw[i] ?? [])
+    if (count > headerCount) {
+      headerCount = count
+      headerIdx = i
+    }
+  }
+
+  const headers = (raw[headerIdx] ?? []).map((v) => String(v).trim())
   const rows = raw
-    .slice(1)
+    .slice(headerIdx + 1)
     .map((r) => headers.map((_, i) => String(r[i] ?? '').trim()))
     .filter((r) => r.some((v) => v !== ''))
   return { headers, rows }
@@ -69,7 +114,7 @@ export function ImportSpreadsheetModal({
         return
       }
       setSheet(parsed)
-      setMapping(guessColumnMapping(parsed.headers))
+      setMapping(guessColumnMapping(parsed.headers, parsed.rows))
     } catch {
       setError('Não foi possível ler esse arquivo. Confira se é um .xlsx, .xls ou .csv válido.')
     }
@@ -78,7 +123,15 @@ export function ImportSpreadsheetModal({
 
   const previewRows = useMemo(() => sheet?.rows.slice(0, 5) ?? [], [sheet])
   const nameColIndex = sheet?.headers.indexOf(mapping.client_name ?? '') ?? -1
+  const lastNameHeader = useMemo(() => (sheet ? findLastNameHeader(sheet.headers, mapping) : undefined), [sheet, mapping])
+  const lastNameColIndex = sheet && lastNameHeader ? sheet.headers.indexOf(lastNameHeader) : -1
   const canImport = !!sheet && nameColIndex !== -1 && !!targetColumnId
+
+  function buildFullName(row: string[]): string {
+    const first = nameColIndex !== -1 ? row[nameColIndex]?.trim() ?? '' : ''
+    const last = lastNameColIndex !== -1 ? row[lastNameColIndex]?.trim() ?? '' : ''
+    return [first, last].filter(Boolean).join(' ')
+  }
 
   async function runImport() {
     if (!sheet || !userId || nameColIndex === -1) return
@@ -88,6 +141,17 @@ export function ImportSpreadsheetModal({
     const phoneCol = sheet.headers.indexOf(mapping.client_phone ?? '')
     const emailCol = sheet.headers.indexOf(mapping.client_email ?? '')
     const valueCol = sheet.headers.indexOf(mapping.proposal_value ?? '')
+
+    // Every other column carries useful client detail (city, ticket type,
+    // payment status, order number...) even though it doesn't map to a
+    // dedicated CRM field — fold it into the card description instead of
+    // dropping it, so the imported card stays fully detailed.
+    const claimedHeaders = new Set(
+      [mapping.client_name, mapping.client_phone, mapping.client_email, mapping.proposal_value, lastNameHeader].filter(
+        (h): h is string => !!h
+      )
+    )
+    const extraColumns = sheet.headers.map((h, i) => ({ header: h, index: i })).filter(({ header }) => !claimedHeaders.has(header))
 
     const { data: last } = await supabase
       .from('cards')
@@ -100,11 +164,16 @@ export function ImportSpreadsheetModal({
 
     const payload: CardInsert[] = []
     for (const row of sheet.rows) {
-      const name = row[nameColIndex]?.trim()
+      const name = buildFullName(row)
       if (!name) continue
+      const descriptionLines = extraColumns
+        .map(({ header, index }) => ({ header, value: row[index]?.trim() }))
+        .filter(({ value }) => !!value)
+        .map(({ header, value }) => `- **${header}**: ${value}`)
       payload.push({
         column_id: targetColumnId,
         title: name,
+        description: descriptionLines.length > 0 ? descriptionLines.join('\n') : null,
         position: position++,
         metadata: {
           ...(phoneCol !== -1 && row[phoneCol] ? { client_phone: row[phoneCol].trim() } : {}),
@@ -231,6 +300,9 @@ export function ImportSpreadsheetModal({
               {previewRows.length > 0 && (
                 <div className="mb-2">
                   <h3 className="mb-2 text-sm font-medium text-primary">Pré-visualização</h3>
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    As demais colunas da planilha são salvas como detalhes na descrição de cada card.
+                  </p>
                   <div className="overflow-x-auto rounded-lg border border-border">
                     <table className="w-full text-left text-xs">
                       <thead className="bg-surface text-muted-foreground">
@@ -246,6 +318,14 @@ export function ImportSpreadsheetModal({
                         {previewRows.map((row, i) => (
                           <tr key={i} className="border-t border-border">
                             {FIELD_ORDER.map((field) => {
+                              if (field === 'client_name') {
+                                const name = buildFullName(row)
+                                return (
+                                  <td key={field} className="max-w-[9rem] truncate px-3 py-2 text-foreground">
+                                    {name || '—'}
+                                  </td>
+                                )
+                              }
                               const idx = sheet.headers.indexOf(mapping[field] ?? '')
                               return (
                                 <td key={field} className="max-w-[9rem] truncate px-3 py-2 text-foreground">

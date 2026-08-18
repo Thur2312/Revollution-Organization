@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Check, DotsThree, Plus, X } from '@phosphor-icons/react/dist/ssr'
+import { Broom, Check, DotsThree, Plus, X } from '@phosphor-icons/react/dist/ssr'
 import type { BoardColumn as BoardColumnType, BoardColor, Card } from '../../../supabase/types'
 import { BoardCard } from './BoardCard'
 import {
@@ -27,6 +27,7 @@ export function BoardColumn({
   onToggleSelect,
   onRename,
   onDelete,
+  onClearColumn,
   onAddCard,
   onDeleteCard,
   onOpenCard,
@@ -43,6 +44,7 @@ export function BoardColumn({
   onToggleSelect: (id: string) => void
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
+  onClearColumn: (id: string) => void
   onAddCard: (columnId: string, title: string) => void
   onDeleteCard: (id: string) => void
   onOpenCard: (card: Card) => void
@@ -136,81 +138,92 @@ export function BoardColumn({
             )}
           </div>
         )}
-        <div className="relative shrink-0">
+        <div className="flex shrink-0 items-center gap-0.5">
           <button
-            onClick={() => setMenuOpen((v) => !v)}
-            className={`rounded p-1 ${headerAccent.subtle} hover:bg-black/10 hover:opacity-100`}
-            aria-label="Opções da coluna"
+            onClick={() => onClearColumn(column.id)}
+            disabled={cards.length === 0}
+            className={`rounded-md bg-black/10 p-1.5 ${headerAccent.text} hover:bg-destructive hover:text-white disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-black/10 disabled:hover:text-current`}
+            aria-label={`Excluir todos os cards da coluna "${column.name}"`}
+            title="Excluir todos os cards desta coluna (a coluna continua existindo)"
           >
-            <DotsThree size={18} weight="bold" />
+            <Broom size={17} weight="bold" />
           </button>
-          {menuOpen && (
-            <div
-              className="absolute right-0 top-full z-10 mt-1 w-48 rounded-lg border border-border bg-background py-1 shadow-sm"
-              style={{ animation: 'dropdown-in 150ms ease-out' }}
+          <div className="relative">
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              className={`rounded p-1 ${headerAccent.subtle} hover:bg-black/10 hover:opacity-100`}
+              aria-label="Opções da coluna"
             >
-              {!crm && (
-                <div className="px-3 py-1.5">
-                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">Cor da coluna</p>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuOpen(false)
-                        onChangeColor(column.id, null)
-                      }}
-                      title="Sem cor"
-                      aria-label="Sem cor"
-                      aria-pressed={!column.color}
-                      className={`flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-muted-foreground/50 transition-transform hover:scale-110 ${
-                        !column.color ? 'ring-2 ring-offset-1 ring-offset-background ring-primary/40' : ''
-                      }`}
-                    >
-                      {!column.color && <Check size={10} weight="bold" className="text-foreground" />}
-                    </button>
-                    {BOARD_COLORS.map((c) => (
+              <DotsThree size={18} weight="bold" />
+            </button>
+            {menuOpen && (
+              <div
+                className="absolute right-0 top-full z-10 mt-1 w-48 rounded-lg border border-border bg-background py-1 shadow-sm"
+                style={{ animation: 'dropdown-in 150ms ease-out' }}
+              >
+                {!crm && (
+                  <div className="px-3 py-1.5">
+                    <p className="mb-1.5 text-xs font-medium text-muted-foreground">Cor da coluna</p>
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <button
-                        key={c}
                         type="button"
                         onClick={() => {
                           setMenuOpen(false)
-                          onChangeColor(column.id, c)
+                          onChangeColor(column.id, null)
                         }}
-                        title={boardColorLabel(c)}
-                        aria-label={boardColorLabel(c)}
-                        aria-pressed={column.color === c}
-                        className={`flex h-5 w-5 items-center justify-center rounded-full ${boardColorClasses(c).dot} transition-transform hover:scale-110 ${
-                          column.color === c ? 'ring-2 ring-offset-1 ring-offset-background ring-primary/40' : ''
+                        title="Sem cor"
+                        aria-label="Sem cor"
+                        aria-pressed={!column.color}
+                        className={`flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-muted-foreground/50 transition-transform hover:scale-110 ${
+                          !column.color ? 'ring-2 ring-offset-1 ring-offset-background ring-primary/40' : ''
                         }`}
                       >
-                        {column.color === c && <Check size={10} weight="bold" className="text-white" />}
+                        {!column.color && <Check size={10} weight="bold" className="text-foreground" />}
                       </button>
-                    ))}
+                      {BOARD_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => {
+                            setMenuOpen(false)
+                            onChangeColor(column.id, c)
+                          }}
+                          title={boardColorLabel(c)}
+                          aria-label={boardColorLabel(c)}
+                          aria-pressed={column.color === c}
+                          className={`flex h-5 w-5 items-center justify-center rounded-full ${boardColorClasses(c).dot} transition-transform hover:scale-110 ${
+                            column.color === c ? 'ring-2 ring-offset-1 ring-offset-background ring-primary/40' : ''
+                          }`}
+                        >
+                          {column.color === c && <Check size={10} weight="bold" className="text-white" />}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-              {crm && (
+                )}
+                {crm && (
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onToggleCelebrate(column.id, !column.celebrate_on_card)
+                    }}
+                    className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-sm text-foreground hover:bg-border/40"
+                  >
+                    🎉 {column.celebrate_on_card ? 'Desativar confete' : 'Confete ao adicionar card'}
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setMenuOpen(false)
-                    onToggleCelebrate(column.id, !column.celebrate_on_card)
+                    onDelete(column.id)
                   }}
-                  className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-sm text-foreground hover:bg-border/40"
+                  className="flex w-full items-center px-3 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10"
                 >
-                  🎉 {column.celebrate_on_card ? 'Desativar confete' : 'Confete ao adicionar card'}
+                  Excluir coluna
                 </button>
-              )}
-              <button
-                onClick={() => {
-                  setMenuOpen(false)
-                  onDelete(column.id)
-                }}
-                className="flex w-full items-center px-3 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10"
-              >
-                Excluir coluna
-              </button>
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

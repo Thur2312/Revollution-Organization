@@ -32,13 +32,22 @@ export function normalizeHeader(raw: string): string {
     .trim()
 }
 
+const LAST_NAME_SYNONYMS = ['sobrenome', 'last name', 'apelido']
+
 export type ColumnMapping = Partial<Record<CrmField, string>>
 
 // Picks the best-scoring header per field. A header can only be claimed by
 // one field — once matched, it's removed from the candidate pool so e.g.
 // "contato" doesn't get reused for both nome and telefone.
-export function guessColumnMapping(headers: string[]): ColumnMapping {
-  const normalized = headers.map((h) => ({ header: h, norm: normalizeHeader(h) }))
+//
+// `rows` (optional sample data) breaks ties between equally-scored headers
+// in favor of whichever is actually filled in more often — some exports
+// carry near-duplicate columns (e.g. "Telefone" + "Whatsapp") where only
+// one is consistently populated, and picking the emptier one by header
+// order alone would import a mostly-blank field.
+export function guessColumnMapping(headers: string[], rows: string[][] = []): ColumnMapping {
+  const normalized = headers.map((h, index) => ({ header: h, index, norm: normalizeHeader(h) }))
+  const fillCounts = normalized.map(({ index }) => rows.reduce((n, r) => n + (r[index]?.trim() ? 1 : 0), 0))
   const claimed = new Set<string>()
   const mapping: ColumnMapping = {}
 
@@ -46,15 +55,17 @@ export function guessColumnMapping(headers: string[]): ColumnMapping {
 
   for (const field of fieldOrder) {
     const synonyms = FIELD_SYNONYMS[field]
-    let best: { header: string; score: number } | null = null
+    let best: { header: string; index: number; score: number } | null = null
 
-    for (const { header, norm } of normalized) {
+    for (const { header, index, norm } of normalized) {
       if (claimed.has(header) || !norm) continue
       for (const synonym of synonyms) {
         let score = 0
         if (norm === synonym) score = 100
         else if (norm.includes(synonym) || synonym.includes(norm)) score = 60
-        if (score > 0 && (!best || score > best.score)) best = { header, score }
+        if (score === 0) continue
+        const better = !best || score > best.score || (score === best.score && fillCounts[index] > fillCounts[best.index])
+        if (better) best = { header, index, score }
       }
     }
 
@@ -65,6 +76,18 @@ export function guessColumnMapping(headers: string[]): ColumnMapping {
   }
 
   return mapping
+}
+
+// Ticket/event exports commonly split the name into "Nome" + "Sobrenome" —
+// find the surname column (if any) so callers can append it onto whatever
+// header was matched for client_name.
+export function findLastNameHeader(headers: string[], mapping: ColumnMapping): string | undefined {
+  const claimed = new Set(Object.values(mapping).filter(Boolean) as string[])
+  for (const header of headers) {
+    if (claimed.has(header)) continue
+    if (LAST_NAME_SYNONYMS.includes(normalizeHeader(header))) return header
+  }
+  return undefined
 }
 
 // Best-effort parse of Brazilian-formatted currency/number strings
