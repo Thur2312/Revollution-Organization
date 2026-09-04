@@ -37,3 +37,6 @@ export async function ensureCrmBoard(workspaceId: string, userId: string): Promi
   }
   return created as Board
 }
+
+
+//quero money
