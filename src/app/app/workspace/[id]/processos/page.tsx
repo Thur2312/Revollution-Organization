@@ -62,13 +62,28 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
     }
   }
 
+  async function verificarViaApi(processoId: string) {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const accessToken = sessionData.session?.access_token
+    if (!accessToken) throw new Error('Sessão expirada — atualize a página.')
+
+    const res = await fetch('/api/inpi/verificar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ processoId }),
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(body.error ?? 'Falha ao verificar no INPI.')
+    return body as { mudou: boolean; encontrado: boolean; emailEnviado?: boolean }
+  }
+
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
     if (!numeroProcesso.trim() || !userId) return
     setAdding(true)
     setError(null)
     try {
-      await adicionarProcessoInpi({
+      const novoProcesso = await adicionarProcessoInpi({
         workspaceId,
         userId,
         numeroProcesso,
@@ -83,7 +98,26 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
       setClienteNome('')
       setClienteEmail('')
       await fetchProcessos()
-      toast('Processo adicionado — a primeira verificação roda em instantes.')
+
+      // Verifica na hora, em vez de esperar a próxima rodada do cron diário
+      // (até 7 dias) — assim que o processo é cadastrado já sabemos a
+      // situação atual dele.
+      setVerificandoId(novoProcesso.id)
+      try {
+        const body = await verificarViaApi(novoProcesso.id)
+        await fetchProcessos()
+        if (!body.encontrado) {
+          toast('Processo adicionado — não encontrado no INPI ainda (a busca pública pode demorar a indexar).')
+        } else if (body.emailEnviado) {
+          toast('Processo adicionado e verificado — e-mail enviado ao cliente.')
+        } else {
+          toast('Processo adicionado e verificado.')
+        }
+      } catch {
+        toast('Processo adicionado, mas a primeira verificação falhou. Use "Verificar agora" pra tentar de novo.')
+      } finally {
+        setVerificandoId(null)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao adicionar processo.')
     } finally {
@@ -95,18 +129,7 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
     setVerificandoId(processo.id)
     setError(null)
     try {
-      const { data: sessionData } = await supabase.auth.getSession()
-      const accessToken = sessionData.session?.access_token
-      if (!accessToken) throw new Error('Sessão expirada — atualize a página.')
-
-      const res = await fetch('/api/inpi/verificar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({ processoId: processo.id }),
-      })
-      const body = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(body.error ?? 'Falha ao verificar no INPI.')
-
+      const body = await verificarViaApi(processo.id)
       await fetchProcessos()
       if (!body.mudou) {
         toast('Verificado — sem mudanças desde a última checagem.')
