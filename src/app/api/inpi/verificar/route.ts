@@ -2,27 +2,17 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createSupabaseAdminClient } from '../../../../lib/supabaseAdmin'
 import { abrirSessaoInpi, consultarProcesso } from '../../../../lib/inpi/cliente'
-import { enviarEmail } from '../../../../lib/email'
+import { processarResultadoInpi } from '../../../../lib/inpi/processar'
 import type { Database, ProcessoInpi } from '../../../../../supabase/types'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
-function emailAtualizacaoHtml(processo: ProcessoInpi, workspaceId: string) {
-  const titulo = processo.apelido || processo.nome || processo.numero_processo
-  const linkHistorico = `${siteUrl}/app/workspace/${workspaceId}/processos/${processo.id}`
-  return `<p>Olá${processo.cliente_nome ? `, ${processo.cliente_nome.split(' ')[0]}` : ''}.</p>
-<p>O processo do INPI <strong>${titulo}</strong> (nº ${processo.numero_processo}) que estamos acompanhando pra você teve uma atualização.</p>
-<p><strong>Situação atual:</strong> ${processo.situacao ?? 'não informada'}</p>
-${processo.despacho_descricao ? `<p><strong>Último despacho:</strong> ${processo.despacho_descricao}</p>` : ''}
-<p><a href="${linkHistorico}">Ver o histórico completo</a></p>
-<p style="color:#8a8a8a;font-size:12px">Consulta de conveniência, feita direto na base pública do INPI. Para efeitos legais, a Revista da Propriedade Industrial (RPI) é o único canal oficial de publicação de despachos.</p>`
-}
-
 // Consulta o portal público do INPI pra um processo e grava o resultado —
-// disparada pelo botão "Verificar agora" na aba Processos. Usa a service
-// role pra escrever porque só o job (aqui, esta rota) pode criar linhas em
+// disparada pelo botão "Verificar agora" na aba Processos (o cron diário
+// em /api/jobs/verificar-inpi cobre a checagem automática). Usa a service
+// role pra escrever porque só o job pode criar linhas em
 // eventos_processo_inpi (ver 0021_processos_inpi.sql); por isso a checagem
 // de que o chamador pertence ao workspace do processo é feita aqui, com o
 // client do próprio usuário, antes de tocar em nada.
@@ -48,10 +38,9 @@ export async function POST(request: Request) {
 
   const admin = createSupabaseAdminClient()
 
-  let cookie: string
   let resultado
   try {
-    cookie = await abrirSessaoInpi(processo.tipo)
+    const cookie = await abrirSessaoInpi(processo.tipo)
     resultado = await consultarProcesso({
       cookie,
       numeroProcesso: processo.numero_processo,
@@ -77,53 +66,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ mudou: false, encontrado: false })
   }
 
-  const mudou =
-    resultado.situacao !== processo.situacao || resultado.despachoDescricao !== processo.despacho_descricao
-
-  const camposRicos = {
-    numero_rpi: resultado.numeroRpi ?? processo.numero_rpi,
-    dados_atualizados_ate: resultado.dadosAtualizadosAte ?? processo.dados_atualizados_ate,
-    nome: resultado.nome ?? processo.nome,
-    titular: resultado.titular ?? processo.titular,
-    apresentacao: resultado.apresentacao ?? processo.apresentacao,
-    natureza: resultado.natureza ?? processo.natureza,
-    classe: resultado.classe ?? processo.classe,
+  try {
+    const { mudou, emailEnviado, processo: processoAtualizado } = await processarResultadoInpi(
+      admin,
+      processo as ProcessoInpi,
+      resultado,
+      siteUrl
+    )
+    return NextResponse.json({ mudou, encontrado: true, emailEnviado, processo: processoAtualizado })
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Falha ao gravar a verificação.' }, { status: 500 })
   }
-
-  if (mudou) {
-    const { error: eventoError } = await admin.from('eventos_processo_inpi').insert({
-      processo_id: processoId,
-      despacho_codigo: null,
-      despacho_descricao: resultado.despachoDescricao ?? resultado.situacao ?? 'Atualização sem descrição.',
-      despacho_data: resultado.despachoData,
-      situacao: resultado.situacao,
-    } as never)
-    if (eventoError) return NextResponse.json({ error: eventoError.message }, { status: 500 })
-  }
-
-  const { data: atualizado, error: updateError } = await admin
-    .from('processos_inpi')
-    .update({
-      ...camposRicos,
-      situacao: resultado.situacao,
-      despacho_descricao: resultado.despachoDescricao,
-      despacho_data: resultado.despachoData,
-      ultima_verificacao_em: new Date().toISOString(),
-    } as never)
-    .eq('id', processoId)
-    .select()
-    .single()
-  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
-
-  const processoAtualizado = atualizado as ProcessoInpi
-  let emailEnviado = false
-  if (mudou && processoAtualizado.cliente_email) {
-    emailEnviado = await enviarEmail({
-      para: processoAtualizado.cliente_email,
-      assunto: `Atualização no processo ${processoAtualizado.numero_processo} do INPI`,
-      html: emailAtualizacaoHtml(processoAtualizado, processoAtualizado.workspace_id),
-    })
-  }
-
-  return NextResponse.json({ mudou, encontrado: true, emailEnviado, processo: processoAtualizado })
 }

@@ -144,8 +144,9 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
       )}
       <h1 className="mb-1 text-2xl font-semibold tracking-tight text-primary">Processos</h1>
       <p className="max-w-2xl text-sm text-muted-foreground">
-        Cadastre o número de um processo de marca, patente ou desenho industrial já depositado no INPI. Ao clicar em
-        &quot;Verificar agora&quot; consultamos a base pública do INPI e registramos aqui quando o status ou o despacho mudar.
+        Cadastre o número de um processo de marca, patente ou desenho industrial já depositado no INPI. Verificamos a
+        base pública do INPI automaticamente todo dia e avisamos o cliente por e-mail quando o status ou o despacho
+        mudar — clique em &quot;Verificar agora&quot; pra checar na hora, sem esperar a próxima rodada automática.
       </p>
       <div className="mt-3 max-w-2xl rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-xs text-muted-foreground">
         Consulta de conveniência, feita direto na base pública do INPI. Para efeitos legais, a Revista da Propriedade
@@ -305,7 +306,8 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
 
       <p className="mt-8 flex items-center gap-1.5 text-xs text-muted-foreground">
         <Warning size={13} />
-        A verificação é manual (botão &quot;Verificar agora&quot;) — ainda não há checagem automática recorrente.
+        Checagem automática roda uma vez por dia para processos não verificados há mais de 7 dias (a RPI é publicada
+        semanalmente) — use &quot;Verificar agora&quot; pra checar antes disso.
       </p>
     </div>
   )
