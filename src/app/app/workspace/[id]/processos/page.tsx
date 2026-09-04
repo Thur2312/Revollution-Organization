@@ -1,7 +1,7 @@
 "use client"
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowsClockwise, Envelope, Plus, Stamp, Trash, Warning } from '@phosphor-icons/react/dist/ssr'
+import { ArrowsClockwise, Envelope, Plus, Stamp, Trash } from '@phosphor-icons/react/dist/ssr'
 import { supabase } from '../../../../../lib/supabaseClient'
 import { useAppSession } from '../../../../../lib/AppSessionContext'
 import { adicionarProcessoInpi, listarProcessosInpi, removerProcessoInpi } from '../../../../../lib/inpiProcessos'
@@ -303,12 +303,6 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
           }}
         />
       )}
-
-      <p className="mt-8 flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Warning size={13} />
-        Checagem automática roda uma vez por dia para processos não verificados há mais de 7 dias (a RPI é publicada
-        semanalmente) — use &quot;Verificar agora&quot; pra checar antes disso.
-      </p>
     </div>
   )
 }
