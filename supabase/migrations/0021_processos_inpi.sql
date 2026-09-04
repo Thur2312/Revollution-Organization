@@ -1,6 +1,16 @@
 -- 0021_processos_inpi.sql
 -- Acompanhamento de processos do INPI (marca, patente, desenho industrial),
--- com uma tabela de estado atual e uma tabela append-only de eventos.
+-- copiado do produto Lastro: uma tabela de estado atual (processos_inpi) +
+-- uma tabela de eventos append-only (eventos_processo_inpi). Diferente do
+-- Lastro (pessoal, dono = auth.uid()), aqui o dono é o workspace, então
+-- segue o mesmo padrão de RLS de boards/cards (is_workspace_member /
+-- can_edit_workspace) em vez de RPCs security-definer pra escrita — este
+-- app não tem limites de plano por processo, então não precisa da
+-- indireção extra que o Lastro usa pra checar isso.
+--
+-- Fonte dos dados: não existe API oficial do INPI. src/lib/inpi/cliente.ts
+-- consulta o portal público de busca (pePI, busca.inpi.gov.br) de forma
+-- anônima, sem chave de API.
 
 create table public.processos_inpi (
   id uuid primary key default gen_random_uuid(),
@@ -26,8 +36,8 @@ create table public.processos_inpi (
   unique (workspace_id, numero_processo, tipo)
 );
 
--- Append-only: eventos são inseridos pelo job de verificação via service role
--- e lidos pelos membros do workspace.
+-- Append-only: nunca editado, só inserido pelo job de verificação
+-- (service role) e lido pelos membros do workspace.
 create table public.eventos_processo_inpi (
   id uuid primary key default gen_random_uuid(),
   processo_id uuid not null references public.processos_inpi (id) on delete cascade,
@@ -42,8 +52,7 @@ create table public.eventos_processo_inpi (
 
 create index idx_processos_inpi_workspace on public.processos_inpi (workspace_id);
 create index idx_processos_inpi_ativo on public.processos_inpi (ativo);
-create index idx_eventos_processo_inpi_processo
-  on public.eventos_processo_inpi (processo_id, encontrado_em desc);
+create index idx_eventos_processo_inpi_processo on public.eventos_processo_inpi (processo_id, encontrado_em desc);
 
 alter table public.processos_inpi enable row level security;
 alter table public.eventos_processo_inpi enable row level security;
@@ -71,8 +80,8 @@ create policy "eventos_processo_inpi_select_member" on public.eventos_processo_i
   for select to authenticated
   using (public.is_workspace_member(public.workspace_of_processo_inpi(processo_id)));
 
--- Membros só podem marcar eventos como lidos; inserção e remoção ficam com
--- o job de verificação via service role.
+-- Membros só podem marcar como lido (update), nunca inserir/apagar
+-- diretamente — eventos só nascem via service role (rota de verificação).
 create policy "eventos_processo_inpi_update_editor" on public.eventos_processo_inpi
   for update to authenticated
   using (public.can_edit_workspace(public.workspace_of_processo_inpi(processo_id)))

@@ -407,6 +407,66 @@ export interface TimeEntryUpdate {
 }
 
 // ---------------------------------------------------------------------------
+// processos_inpi / eventos_processo_inpi — acompanhamento de processos do
+// INPI (marca, patente, desenho industrial) por workspace. Ver
+// src/lib/inpi/cliente.ts for como a consulta pública é feita.
+// ---------------------------------------------------------------------------
+
+export type TipoProcessoInpi = 'marca' | 'patente' | 'desenho_industrial';
+
+export interface ProcessoInpi {
+  id: string;
+  workspace_id: string;
+  numero_processo: string;
+  tipo: TipoProcessoInpi;
+  apelido: string | null;
+  nome: string | null;
+  situacao: string | null;
+  despacho_codigo: string | null;
+  despacho_descricao: string | null;
+  despacho_data: string | null;
+  numero_rpi: string | null;
+  dados_atualizados_ate: string | null;
+  titular: string | null;
+  apresentacao: string | null;
+  natureza: string | null;
+  classe: string | null;
+  ultima_verificacao_em: string | null;
+  ativo: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ProcessoInpiInsert {
+  workspace_id: string;
+  numero_processo: string;
+  tipo: TipoProcessoInpi;
+  apelido?: string | null;
+  created_by: string;
+}
+
+export interface ProcessoInpiUpdate {
+  apelido?: string | null;
+  ativo?: boolean;
+}
+
+export interface EventoProcessoInpi {
+  id: string;
+  processo_id: string;
+  despacho_codigo: string | null;
+  despacho_descricao: string;
+  despacho_data: string | null;
+  situacao: string | null;
+  encontrado_em: string;
+  lido: boolean;
+  created_at: string;
+}
+
+export interface EventoProcessoInpiUpdate {
+  lido?: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Database — pass to createClient<Database>() from @supabase/supabase-js
 // for a fully typed client without running `supabase gen types`.
 // ---------------------------------------------------------------------------
@@ -488,6 +548,16 @@ export interface Database {
         Row: TimeEntry;
         Insert: TimeEntryInsert;
         Update: TimeEntryUpdate;
+      };
+      processos_inpi: {
+        Row: ProcessoInpi;
+        Insert: ProcessoInpiInsert;
+        Update: ProcessoInpiUpdate;
+      };
+      eventos_processo_inpi: {
+        Row: EventoProcessoInpi;
+        Insert: never; // created only by the /api/inpi verification route (service role)
+        Update: EventoProcessoInpiUpdate;
       };
     };
     Functions: {
