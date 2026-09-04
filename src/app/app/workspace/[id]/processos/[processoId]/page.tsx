@@ -108,6 +108,12 @@ export default function ProcessoInpiDetailPage({ params }: { params: { id: strin
           : 'Ainda não verificado.'}
         {processo.numero_rpi && <> · Nº da Revista {processo.numero_rpi}</>}
       </p>
+      {processo.cliente_email && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Aviso de atualização para {processo.cliente_nome ? `${processo.cliente_nome} · ` : ''}
+          {processo.cliente_email}
+        </p>
+      )}
 
       {CAMPOS.some((campo) => processo[campo.chave]) && (
         <dl className="mt-6 grid gap-4 rounded-xl border border-border bg-background p-5 sm:grid-cols-2">

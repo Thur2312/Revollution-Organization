@@ -433,6 +433,8 @@ export interface ProcessoInpi {
   classe: string | null;
   ultima_verificacao_em: string | null;
   ativo: boolean;
+  cliente_nome: string | null;
+  cliente_email: string | null;
   created_by: string | null;
   created_at: string;
 }
@@ -442,12 +444,16 @@ export interface ProcessoInpiInsert {
   numero_processo: string;
   tipo: TipoProcessoInpi;
   apelido?: string | null;
+  cliente_nome?: string | null;
+  cliente_email?: string | null;
   created_by: string;
 }
 
 export interface ProcessoInpiUpdate {
   apelido?: string | null;
   ativo?: boolean;
+  cliente_nome?: string | null;
+  cliente_email?: string | null;
 }
 
 export interface EventoProcessoInpi {

@@ -2,10 +2,23 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createSupabaseAdminClient } from '../../../../lib/supabaseAdmin'
 import { abrirSessaoInpi, consultarProcesso } from '../../../../lib/inpi/cliente'
+import { enviarEmail } from '../../../../lib/email'
 import type { Database, ProcessoInpi } from '../../../../../supabase/types'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+
+function emailAtualizacaoHtml(processo: ProcessoInpi, workspaceId: string) {
+  const titulo = processo.apelido || processo.nome || processo.numero_processo
+  const linkHistorico = `${siteUrl}/app/workspace/${workspaceId}/processos/${processo.id}`
+  return `<p>Olá${processo.cliente_nome ? `, ${processo.cliente_nome.split(' ')[0]}` : ''}.</p>
+<p>O processo do INPI <strong>${titulo}</strong> (nº ${processo.numero_processo}) que estamos acompanhando pra você teve uma atualização.</p>
+<p><strong>Situação atual:</strong> ${processo.situacao ?? 'não informada'}</p>
+${processo.despacho_descricao ? `<p><strong>Último despacho:</strong> ${processo.despacho_descricao}</p>` : ''}
+<p><a href="${linkHistorico}">Ver o histórico completo</a></p>
+<p style="color:#8a8a8a;font-size:12px">Consulta de conveniência, feita direto na base pública do INPI. Para efeitos legais, a Revista da Propriedade Industrial (RPI) é o único canal oficial de publicação de despachos.</p>`
+}
 
 // Consulta o portal público do INPI pra um processo e grava o resultado —
 // disparada pelo botão "Verificar agora" na aba Processos. Usa a service
@@ -102,5 +115,15 @@ export async function POST(request: Request) {
     .single()
   if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
 
-  return NextResponse.json({ mudou, encontrado: true, processo: atualizado as ProcessoInpi })
+  const processoAtualizado = atualizado as ProcessoInpi
+  let emailEnviado = false
+  if (mudou && processoAtualizado.cliente_email) {
+    emailEnviado = await enviarEmail({
+      para: processoAtualizado.cliente_email,
+      assunto: `Atualização no processo ${processoAtualizado.numero_processo} do INPI`,
+      html: emailAtualizacaoHtml(processoAtualizado, processoAtualizado.workspace_id),
+    })
+  }
+
+  return NextResponse.json({ mudou, encontrado: true, emailEnviado, processo: processoAtualizado })
 }

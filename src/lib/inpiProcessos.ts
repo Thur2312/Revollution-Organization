@@ -17,6 +17,8 @@ export async function adicionarProcessoInpi(params: {
   numeroProcesso: string
   tipo: TipoProcessoInpi
   apelido: string | null
+  clienteNome: string | null
+  clienteEmail: string | null
 }): Promise<ProcessoInpi> {
   const { data, error } = await supabase
     .from('processos_inpi')
@@ -25,6 +27,8 @@ export async function adicionarProcessoInpi(params: {
       numero_processo: params.numeroProcesso.trim(),
       tipo: params.tipo,
       apelido: params.apelido?.trim() || null,
+      cliente_nome: params.clienteNome?.trim() || null,
+      cliente_email: params.clienteEmail?.trim() || null,
       created_by: params.userId,
     })
     .select()

@@ -1,7 +1,7 @@
 "use client"
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowsClockwise, Plus, Stamp, Trash, Warning } from '@phosphor-icons/react/dist/ssr'
+import { ArrowsClockwise, Envelope, Plus, Stamp, Trash, Warning } from '@phosphor-icons/react/dist/ssr'
 import { supabase } from '../../../../../lib/supabaseClient'
 import { useAppSession } from '../../../../../lib/AppSessionContext'
 import { adicionarProcessoInpi, listarProcessosInpi, removerProcessoInpi } from '../../../../../lib/inpiProcessos'
@@ -34,6 +34,8 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
   const [numeroProcesso, setNumeroProcesso] = useState('')
   const [tipo, setTipo] = useState<TipoProcessoInpi>('marca')
   const [apelido, setApelido] = useState('')
+  const [clienteNome, setClienteNome] = useState('')
+  const [clienteEmail, setClienteEmail] = useState('')
   const [adding, setAdding] = useState(false)
 
   const [verificandoId, setVerificandoId] = useState<string | null>(null)
@@ -65,10 +67,20 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
     setAdding(true)
     setError(null)
     try {
-      await adicionarProcessoInpi({ workspaceId, userId, numeroProcesso, tipo, apelido: apelido || null })
+      await adicionarProcessoInpi({
+        workspaceId,
+        userId,
+        numeroProcesso,
+        tipo,
+        apelido: apelido || null,
+        clienteNome: clienteNome || null,
+        clienteEmail: clienteEmail || null,
+      })
       setNumeroProcesso('')
       setApelido('')
       setTipo('marca')
+      setClienteNome('')
+      setClienteEmail('')
       await fetchProcessos()
       toast('Processo adicionado — a primeira verificação roda em instantes.')
     } catch (e) {
@@ -95,7 +107,13 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
       if (!res.ok) throw new Error(body.error ?? 'Falha ao verificar no INPI.')
 
       await fetchProcessos()
-      toast(body.mudou ? 'Encontramos uma atualização nesse processo.' : 'Verificado — sem mudanças desde a última checagem.')
+      if (!body.mudou) {
+        toast('Verificado — sem mudanças desde a última checagem.')
+      } else if (body.emailEnviado) {
+        toast('Encontramos uma atualização — e-mail enviado ao cliente.')
+      } else {
+        toast('Encontramos uma atualização nesse processo.')
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao verificar no INPI.')
     } finally {
@@ -140,34 +158,54 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
         </p>
       )}
 
-      <form
-        onSubmit={handleAdd}
-        className="mt-6 grid gap-4 rounded-xl border border-border bg-background p-5 sm:grid-cols-[1.2fr_1fr_1fr_auto] sm:items-end"
-      >
-        <Field
-          label="Número do processo"
-          name="numero_processo"
-          placeholder="Ex.: 823767730"
-          value={numeroProcesso}
-          onChange={(e) => setNumeroProcesso(e.target.value)}
-          required
-        />
-        <Select label="Tipo" name="tipo" value={tipo} onChange={(e) => setTipo(e.target.value as TipoProcessoInpi)}>
-          <option value="marca">Marca</option>
-          <option value="patente">Patente</option>
-          <option value="desenho_industrial">Desenho industrial</option>
-        </Select>
-        <Field
-          label="Apelido (opcional)"
-          name="apelido"
-          placeholder="Ex.: Logo da marca X"
-          value={apelido}
-          onChange={(e) => setApelido(e.target.value)}
-        />
-        <Button type="submit" disabled={adding || !numeroProcesso.trim()}>
-          <Plus size={18} weight="bold" />
-          Adicionar
-        </Button>
+      <form onSubmit={handleAdd} className="mt-6 rounded-xl border border-border bg-background p-5">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field
+            label="Número do processo"
+            name="numero_processo"
+            placeholder="Ex.: 823767730"
+            value={numeroProcesso}
+            onChange={(e) => setNumeroProcesso(e.target.value)}
+            required
+          />
+          <Select label="Tipo" name="tipo" value={tipo} onChange={(e) => setTipo(e.target.value as TipoProcessoInpi)}>
+            <option value="marca">Marca</option>
+            <option value="patente">Patente</option>
+            <option value="desenho_industrial">Desenho industrial</option>
+          </Select>
+          <Field
+            label="Apelido (opcional)"
+            name="apelido"
+            placeholder="Ex.: Logo da marca X"
+            value={apelido}
+            onChange={(e) => setApelido(e.target.value)}
+          />
+        </div>
+
+        <p className="mb-1.5 mt-5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Aviso de atualização (opcional)
+        </p>
+        <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <Field
+            label="Nome do cliente"
+            name="cliente_nome"
+            placeholder="Ex.: Maria Souza"
+            value={clienteNome}
+            onChange={(e) => setClienteNome(e.target.value)}
+          />
+          <Field
+            label="E-mail do cliente"
+            name="cliente_email"
+            type="email"
+            placeholder="cliente@exemplo.com"
+            value={clienteEmail}
+            onChange={(e) => setClienteEmail(e.target.value)}
+          />
+          <Button type="submit" disabled={adding || !numeroProcesso.trim()}>
+            <Plus size={18} weight="bold" />
+            Adicionar
+          </Button>
+        </div>
       </form>
 
       {processos === null ? (
@@ -212,6 +250,13 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
                     : 'Ainda não verificado — clique em "Verificar agora".'}
                   {processo.despacho_data && <> · Último despacho em {formatDate(processo.despacho_data)}</>}
                 </p>
+                {processo.cliente_email && (
+                  <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                    <Envelope size={12} />
+                    Aviso para {processo.cliente_nome ? `${processo.cliente_nome} · ` : ''}
+                    {processo.cliente_email}
+                  </p>
+                )}
               </div>
 
               <div className="flex shrink-0 flex-wrap gap-2">
