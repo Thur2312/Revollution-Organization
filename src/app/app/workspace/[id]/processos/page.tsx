@@ -39,6 +39,7 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
   const [adding, setAdding] = useState(false)
 
   const [verificandoId, setVerificandoId] = useState<string | null>(null)
+  const [enviandoEmailId, setEnviandoEmailId] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<ProcessoInpi | null>(null)
 
   useEffect(() => {
@@ -118,6 +119,30 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
       setError(e instanceof Error ? e.message : 'Falha ao verificar no INPI.')
     } finally {
       setVerificandoId(null)
+    }
+  }
+
+  async function handleEnviarEmail(processo: ProcessoInpi) {
+    setEnviandoEmailId(processo.id)
+    setError(null)
+    try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const accessToken = sessionData.session?.access_token
+      if (!accessToken) throw new Error('Sessão expirada — atualize a página.')
+
+      const res = await fetch('/api/inpi/enviar-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ processoId: processo.id }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error ?? 'Falha ao enviar o e-mail.')
+
+      toast(`E-mail enviado para ${processo.cliente_email}.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao enviar o e-mail.')
+    } finally {
+      setEnviandoEmailId(null)
     }
   }
 
@@ -271,6 +296,18 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
                   <ArrowsClockwise size={14} className={verificandoId === processo.id ? 'animate-spin' : ''} />
                   {verificandoId === processo.id ? 'Verificando…' : 'Verificar agora'}
                 </Button>
+                {processo.cliente_email && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={enviandoEmailId === processo.id}
+                    onClick={() => handleEnviarEmail(processo)}
+                  >
+                    <Envelope size={14} />
+                    {enviandoEmailId === processo.id ? 'Enviando…' : 'Enviar e-mail'}
+                  </Button>
+                )}
                 <Link href={`/app/workspace/${workspaceId}/processos/${processo.id}`}>
                   <Button type="button" variant="ghost" size="sm">
                     Ver histórico
