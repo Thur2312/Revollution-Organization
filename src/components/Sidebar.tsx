@@ -15,6 +15,7 @@ import {
   Moon,
   SignOut,
   SquaresFour,
+  Stamp,
   Sun,
   UserCircle,
   UsersThree,
@@ -173,6 +174,15 @@ export function Sidebar({ userId, isPlatformAdmin = false }: { userId: string; i
         >
           <ChartLineUp size={18} />
         </Link>
+        <Link
+          href="/app/processos"
+          title="Processos"
+          className={`rounded-md p-1.5 ${
+            pathname.includes('/processos') ? 'text-accent' : 'text-muted-foreground hover:bg-surface hover:text-foreground'
+          }`}
+        >
+          <Stamp size={18} />
+        </Link>
         {isPlatformAdmin && (
           <>
             <Link
@@ -272,6 +282,10 @@ export function Sidebar({ userId, isPlatformAdmin = false }: { userId: string; i
         <Link href="/app/crm" className={navClasses(pathname.startsWith('/app/crm') || pathname.endsWith('/crm'))}>
           <ChartLineUp size={17} />
           CRM
+        </Link>
+        <Link href="/app/processos" className={navClasses(pathname.includes('/processos'))}>
+          <Stamp size={17} />
+          Processos
         </Link>
         {isPlatformAdmin && (
           <>
