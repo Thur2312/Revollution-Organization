@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { enviarEmail } from '../email'
 import { processoInpiAtualizadoEmailHtml } from './emailTemplate'
 import type { ResultadoConsultaInpi } from './cliente'
-import type { Database, ProcessoInpi } from '../../../supabase/types'
+import type { Database, ProcessoInpi, ProcessoInpiComCliente } from '../../../supabase/types'
 
 export interface ProcessamentoResultado {
   mudou: boolean
@@ -12,14 +12,17 @@ export interface ProcessamentoResultado {
 
 // Grava o resultado de uma consulta bem-sucedida (tipo "encontrado") em
 // processos_inpi/eventos_processo_inpi e dispara o e-mail ao cliente
-// quando houver mudança de situação/despacho — compartilhado pela rota
-// manual (/api/inpi/verificar, botão "Verificar agora") e pelo cron
-// (/api/jobs/verificar-inpi) pra não duplicar essa lógica entre os dois
-// gatilhos. Lança em caso de erro de escrita no banco; quem chama decide
-// como reportar isso (resposta HTTP de erro vs. contagem de falha no lote).
+// vinculado quando houver mudança de situação/despacho — compartilhado
+// pela rota manual (/api/inpi/verificar, botão "Verificar agora") e pelo
+// cron (/api/jobs/verificar-inpi) pra não duplicar essa lógica entre os
+// dois gatilhos. `processo` já vem com o cliente embutido (join feito por
+// quem chama) porque o e-mail não muda durante essa atualização — não
+// precisa buscar de novo depois de escrever. Lança em caso de erro de
+// escrita no banco; quem chama decide como reportar isso (resposta HTTP
+// de erro vs. contagem de falha no lote).
 export async function processarResultadoInpi(
   admin: SupabaseClient<Database>,
-  processo: ProcessoInpi,
+  processo: ProcessoInpiComCliente,
   resultado: Extract<ResultadoConsultaInpi, { tipo: 'encontrado' }>,
   siteUrl: string
 ): Promise<ProcessamentoResultado> {
@@ -62,11 +65,11 @@ export async function processarResultadoInpi(
 
   const processoAtualizado = atualizado as ProcessoInpi
   let emailEnviado = false
-  if (mudou && processoAtualizado.cliente_email) {
+  if (mudou && processo.cliente?.email) {
     emailEnviado = await enviarEmail({
-      para: processoAtualizado.cliente_email,
+      para: processo.cliente.email,
       assunto: `Atualização no processo ${processoAtualizado.numero_processo} do INPI`,
-      html: processoInpiAtualizadoEmailHtml(processoAtualizado, processoAtualizado.workspace_id, siteUrl),
+      html: processoInpiAtualizadoEmailHtml(processoAtualizado, processo.cliente, processo.workspace_id, siteUrl),
     })
   }
 

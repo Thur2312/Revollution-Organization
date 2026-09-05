@@ -407,6 +407,42 @@ export interface TimeEntryUpdate {
 }
 
 // ---------------------------------------------------------------------------
+// clientes — cadastro de cliente por workspace, reaproveitável entre vários
+// processos_inpi (ver 0023_clientes.sql). Tudo opcional: um processo pode
+// não ter cliente vinculado.
+// ---------------------------------------------------------------------------
+
+export interface Cliente {
+  id: string;
+  workspace_id: string;
+  nome: string | null;
+  email: string | null;
+  documento: string | null;
+  telefone: string | null;
+  observacoes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ClienteInsert {
+  workspace_id: string;
+  nome?: string | null;
+  email?: string | null;
+  documento?: string | null;
+  telefone?: string | null;
+  observacoes?: string | null;
+  created_by: string;
+}
+
+export interface ClienteUpdate {
+  nome?: string | null;
+  email?: string | null;
+  documento?: string | null;
+  telefone?: string | null;
+  observacoes?: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // processos_inpi / eventos_processo_inpi — acompanhamento de processos do
 // INPI (marca, patente, desenho industrial) por workspace. Ver
 // src/lib/inpi/cliente.ts for como a consulta pública é feita.
@@ -433,10 +469,14 @@ export interface ProcessoInpi {
   classe: string | null;
   ultima_verificacao_em: string | null;
   ativo: boolean;
-  cliente_nome: string | null;
-  cliente_email: string | null;
+  cliente_id: string | null;
   created_by: string | null;
   created_at: string;
+}
+
+// processos_inpi selecionado com o cliente embutido (`.select('*, cliente:clientes(*)')`).
+export interface ProcessoInpiComCliente extends ProcessoInpi {
+  cliente: Cliente | null;
 }
 
 export interface ProcessoInpiInsert {
@@ -444,16 +484,14 @@ export interface ProcessoInpiInsert {
   numero_processo: string;
   tipo: TipoProcessoInpi;
   apelido?: string | null;
-  cliente_nome?: string | null;
-  cliente_email?: string | null;
+  cliente_id?: string | null;
   created_by: string;
 }
 
 export interface ProcessoInpiUpdate {
   apelido?: string | null;
   ativo?: boolean;
-  cliente_nome?: string | null;
-  cliente_email?: string | null;
+  cliente_id?: string | null;
 }
 
 export interface EventoProcessoInpi {
@@ -554,6 +592,11 @@ export interface Database {
         Row: TimeEntry;
         Insert: TimeEntryInsert;
         Update: TimeEntryUpdate;
+      };
+      clientes: {
+        Row: Cliente;
+        Insert: ClienteInsert;
+        Update: ClienteUpdate;
       };
       processos_inpi: {
         Row: ProcessoInpi;

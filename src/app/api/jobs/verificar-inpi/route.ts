@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createSupabaseAdminClient } from '../../../../lib/supabaseAdmin'
 import { abrirSessaoInpi, consultarProcesso } from '../../../../lib/inpi/cliente'
 import { processarResultadoInpi } from '../../../../lib/inpi/processar'
-import type { ProcessoInpi, TipoProcessoInpi } from '../../../../../supabase/types'
+import type { ProcessoInpiComCliente, TipoProcessoInpi } from '../../../../../supabase/types'
 
 // Vercel Cron Job (ver vercel.json) — verifica processos ativos de todos
 // os workspaces que não foram checados nos últimos INTERVALO_DIAS dias (a
@@ -32,13 +32,13 @@ export async function GET(request: Request) {
 
   const { data: processos, error } = await admin
     .from('processos_inpi')
-    .select('*')
+    .select('*, cliente:clientes(*)')
     .eq('ativo', true)
     .or(`ultima_verificacao_em.is.null,ultima_verificacao_em.lt.${limite}`)
     .limit(LOTE)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const lista = (processos ?? []) as ProcessoInpi[]
+  const lista = (processos ?? []) as unknown as ProcessoInpiComCliente[]
 
   let eventosCriados = 0
   let emailsEnviados = 0

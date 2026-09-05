@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { enviarEmail } from '../../../../lib/email'
 import { processoInpiAtualizadoEmailHtml } from '../../../../lib/inpi/emailTemplate'
-import type { Database, ProcessoInpi } from '../../../../../supabase/types'
+import type { Database, ProcessoInpiComCliente } from '../../../../../supabase/types'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
@@ -27,21 +27,21 @@ export async function POST(request: Request) {
 
   const { data: processo, error: fetchError } = await callerClient
     .from('processos_inpi')
-    .select('*')
+    .select('*, cliente:clientes(*)')
     .eq('id', processoId)
     .maybeSingle()
   if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 })
   if (!processo) return NextResponse.json({ error: 'Processo não encontrado.' }, { status: 404 })
 
-  const processoTyped = processo as ProcessoInpi
-  if (!processoTyped.cliente_email) {
-    return NextResponse.json({ error: 'Esse processo não tem e-mail de cliente cadastrado.' }, { status: 400 })
+  const processoTyped = processo as unknown as ProcessoInpiComCliente
+  if (!processoTyped.cliente?.email) {
+    return NextResponse.json({ error: 'Esse processo não tem cliente com e-mail cadastrado.' }, { status: 400 })
   }
 
   const emailEnviado = await enviarEmail({
-    para: processoTyped.cliente_email,
+    para: processoTyped.cliente.email,
     assunto: `Atualização no processo ${processoTyped.numero_processo} do INPI`,
-    html: processoInpiAtualizadoEmailHtml(processoTyped, processoTyped.workspace_id, siteUrl),
+    html: processoInpiAtualizadoEmailHtml(processoTyped, processoTyped.cliente, processoTyped.workspace_id, siteUrl),
   })
 
   if (!emailEnviado) {

@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createSupabaseAdminClient } from '../../../../lib/supabaseAdmin'
 import { abrirSessaoInpi, consultarProcesso } from '../../../../lib/inpi/cliente'
 import { processarResultadoInpi } from '../../../../lib/inpi/processar'
-import type { Database, ProcessoInpi } from '../../../../../supabase/types'
+import type { Database, ProcessoInpiComCliente } from '../../../../../supabase/types'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
   const { data: processo, error: fetchError } = await callerClient
     .from('processos_inpi')
-    .select('*')
+    .select('*, cliente:clientes(*)')
     .eq('id', processoId)
     .maybeSingle()
   if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 })
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
   try {
     const { mudou, emailEnviado, processo: processoAtualizado } = await processarResultadoInpi(
       admin,
-      processo as ProcessoInpi,
+      processo as unknown as ProcessoInpiComCliente,
       resultado,
       siteUrl
     )

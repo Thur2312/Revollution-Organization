@@ -1,14 +1,14 @@
 import { supabase } from './supabaseClient'
-import type { ProcessoInpi, TipoProcessoInpi } from '../../supabase/types'
+import type { ProcessoInpi, ProcessoInpiComCliente, TipoProcessoInpi } from '../../supabase/types'
 
-export async function listarProcessosInpi(workspaceId: string): Promise<ProcessoInpi[]> {
+export async function listarProcessosInpi(workspaceId: string): Promise<ProcessoInpiComCliente[]> {
   const { data, error } = await supabase
     .from('processos_inpi')
-    .select('*')
+    .select('*, cliente:clientes(*)')
     .eq('workspace_id', workspaceId)
     .order('created_at', { ascending: false })
   if (error) throw new Error(error.message)
-  return (data ?? []) as ProcessoInpi[]
+  return (data ?? []) as unknown as ProcessoInpiComCliente[]
 }
 
 export async function adicionarProcessoInpi(params: {
@@ -17,8 +17,7 @@ export async function adicionarProcessoInpi(params: {
   numeroProcesso: string
   tipo: TipoProcessoInpi
   apelido: string | null
-  clienteNome: string | null
-  clienteEmail: string | null
+  clienteId: string | null
 }): Promise<ProcessoInpi> {
   const { data, error } = await supabase
     .from('processos_inpi')
@@ -27,8 +26,7 @@ export async function adicionarProcessoInpi(params: {
       numero_processo: params.numeroProcesso.trim(),
       tipo: params.tipo,
       apelido: params.apelido?.trim() || null,
-      cliente_nome: params.clienteNome?.trim() || null,
-      cliente_email: params.clienteEmail?.trim() || null,
+      cliente_id: params.clienteId,
       created_by: params.userId,
     })
     .select()
@@ -39,6 +37,11 @@ export async function adicionarProcessoInpi(params: {
     throw new Error(error.message)
   }
   return data as ProcessoInpi
+}
+
+export async function vincularClienteProcessoInpi(processoId: string, clienteId: string | null): Promise<void> {
+  const { error } = await supabase.from('processos_inpi').update({ cliente_id: clienteId }).eq('id', processoId)
+  if (error) throw new Error(error.message)
 }
 
 export async function removerProcessoInpi(processoId: string): Promise<void> {

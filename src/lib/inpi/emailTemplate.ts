@@ -1,4 +1,4 @@
-import type { ProcessoInpi } from '../../../supabase/types'
+import type { Cliente, ProcessoInpi } from '../../../supabase/types'
 
 // Table-based layout with everything inlined — required for this to render
 // consistently across email clients (Outlook desktop uses Word's engine:
@@ -23,9 +23,14 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;')
 }
 
-export function processoInpiAtualizadoEmailHtml(processo: ProcessoInpi, workspaceId: string, siteUrl: string): string {
+export function processoInpiAtualizadoEmailHtml(
+  processo: ProcessoInpi,
+  cliente: Cliente | null,
+  workspaceId: string,
+  siteUrl: string
+): string {
   const titulo = escapeHtml(processo.apelido || processo.nome || processo.numero_processo)
-  const primeiroNome = processo.cliente_nome ? escapeHtml(processo.cliente_nome.split(' ')[0]) : null
+  const primeiroNome = cliente?.nome ? escapeHtml(cliente.nome.split(' ')[0]) : null
   const situacao = processo.situacao ? escapeHtml(processo.situacao) : null
   const despacho = processo.despacho_descricao ? escapeHtml(processo.despacho_descricao) : null
   const logoUrl = `${siteUrl.replace(/\/$/, '')}/brand/revollution-logo-full.png`

@@ -5,13 +5,21 @@ import { ArrowsClockwise, Envelope, Plus, Stamp, Trash } from '@phosphor-icons/r
 import { supabase } from '../../../../../lib/supabaseClient'
 import { useAppSession } from '../../../../../lib/AppSessionContext'
 import { adicionarProcessoInpi, listarProcessosInpi, removerProcessoInpi } from '../../../../../lib/inpiProcessos'
+import { criarCliente, listarClientes } from '../../../../../lib/clientes'
 import { Field } from '../../../../../components/ui/Field'
 import { Select } from '../../../../../components/ui/Select'
 import { Button } from '../../../../../components/ui/Button'
 import { ConfirmDialog } from '../../../../../components/ui/ConfirmDialog'
 import { useToast } from '../../../../../components/ui/ToastProvider'
 import { ProcessoInpiTipoBadge } from '../../../../../components/inpi/ProcessoInpiTipoBadge'
-import type { ProcessoInpi, TipoProcessoInpi } from '../../../../../../supabase/types'
+import {
+  CLIENTE_NENHUM,
+  CLIENTE_NOVO,
+  ClienteFieldset,
+  novoClienteVazio,
+  type NovoClienteState,
+} from '../../../../../components/inpi/ClienteFieldset'
+import type { Cliente, ProcessoInpiComCliente, TipoProcessoInpi } from '../../../../../../supabase/types'
 
 function formatDate(value: string | null) {
   if (!value) return null
@@ -28,19 +36,20 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
   const { userId } = useAppSession()
   const toast = useToast()
   const [workspaceName, setWorkspaceName] = useState<string | null>(null)
-  const [processos, setProcessos] = useState<ProcessoInpi[] | null>(null)
+  const [processos, setProcessos] = useState<ProcessoInpiComCliente[] | null>(null)
+  const [clientes, setClientes] = useState<Cliente[]>([])
   const [error, setError] = useState<string | null>(null)
 
   const [numeroProcesso, setNumeroProcesso] = useState('')
   const [tipo, setTipo] = useState<TipoProcessoInpi>('marca')
   const [apelido, setApelido] = useState('')
-  const [clienteNome, setClienteNome] = useState('')
-  const [clienteEmail, setClienteEmail] = useState('')
+  const [clienteSelecionadoId, setClienteSelecionadoId] = useState(CLIENTE_NENHUM)
+  const [novoCliente, setNovoCliente] = useState<NovoClienteState>(novoClienteVazio())
   const [adding, setAdding] = useState(false)
 
   const [verificandoId, setVerificandoId] = useState<string | null>(null)
   const [enviandoEmailId, setEnviandoEmailId] = useState<string | null>(null)
-  const [pendingDelete, setPendingDelete] = useState<ProcessoInpi | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<ProcessoInpiComCliente | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -52,6 +61,7 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
 
   useEffect(() => {
     fetchProcessos()
+    fetchClientes()
   }, [workspaceId])
 
   async function fetchProcessos() {
@@ -59,6 +69,14 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
       setProcessos(await listarProcessosInpi(workspaceId))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao carregar processos.')
+    }
+  }
+
+  async function fetchClientes() {
+    try {
+      setClientes(await listarClientes(workspaceId))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao carregar clientes.')
     }
   }
 
@@ -83,21 +101,28 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
     setAdding(true)
     setError(null)
     try {
+      let clienteId: string | null = null
+      if (clienteSelecionadoId === CLIENTE_NOVO) {
+        const criado = await criarCliente(workspaceId, userId, novoCliente)
+        clienteId = criado?.id ?? null
+      } else if (clienteSelecionadoId) {
+        clienteId = clienteSelecionadoId
+      }
+
       const novoProcesso = await adicionarProcessoInpi({
         workspaceId,
         userId,
         numeroProcesso,
         tipo,
         apelido: apelido || null,
-        clienteNome: clienteNome || null,
-        clienteEmail: clienteEmail || null,
+        clienteId,
       })
       setNumeroProcesso('')
       setApelido('')
       setTipo('marca')
-      setClienteNome('')
-      setClienteEmail('')
-      await fetchProcessos()
+      setClienteSelecionadoId(CLIENTE_NENHUM)
+      setNovoCliente(novoClienteVazio())
+      await Promise.all([fetchProcessos(), fetchClientes()])
 
       // Verifica na hora, em vez de esperar a próxima rodada do cron diário
       // (até 7 dias) — assim que o processo é cadastrado já sabemos a
@@ -125,7 +150,7 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
     }
   }
 
-  async function handleVerificar(processo: ProcessoInpi) {
+  async function handleVerificar(processo: ProcessoInpiComCliente) {
     setVerificandoId(processo.id)
     setError(null)
     try {
@@ -145,7 +170,7 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
     }
   }
 
-  async function handleEnviarEmail(processo: ProcessoInpi) {
+  async function handleEnviarEmail(processo: ProcessoInpiComCliente) {
     setEnviandoEmailId(processo.id)
     setError(null)
     try {
@@ -161,7 +186,7 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
       const body = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(body.error ?? 'Falha ao enviar o e-mail.')
 
-      toast(`E-mail enviado para ${processo.cliente_email}.`)
+      toast(`E-mail enviado para ${processo.cliente?.email}.`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao enviar o e-mail.')
     } finally {
@@ -169,7 +194,7 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
     }
   }
 
-  async function handleDelete(processo: ProcessoInpi) {
+  async function handleDelete(processo: ProcessoInpiComCliente) {
     setProcessos((prev) => (prev ? prev.filter((p) => p.id !== processo.id) : prev))
     try {
       await removerProcessoInpi(processo.id)
@@ -231,30 +256,19 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
           />
         </div>
 
-        <p className="mb-1.5 mt-5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Aviso de atualização (opcional)
-        </p>
-        <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-          <Field
-            label="Nome do cliente"
-            name="cliente_nome"
-            placeholder="Ex.: Maria Souza"
-            value={clienteNome}
-            onChange={(e) => setClienteNome(e.target.value)}
-          />
-          <Field
-            label="E-mail do cliente"
-            name="cliente_email"
-            type="email"
-            placeholder="cliente@exemplo.com"
-            value={clienteEmail}
-            onChange={(e) => setClienteEmail(e.target.value)}
-          />
-          <Button type="submit" disabled={adding || !numeroProcesso.trim()}>
-            <Plus size={18} weight="bold" />
-            Adicionar
-          </Button>
-        </div>
+        <p className="mb-1.5 mt-5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Cliente</p>
+        <ClienteFieldset
+          clientes={clientes}
+          selectedId={clienteSelecionadoId}
+          onSelectedIdChange={setClienteSelecionadoId}
+          novo={novoCliente}
+          onNovoChange={setNovoCliente}
+        />
+
+        <Button type="submit" disabled={adding || !numeroProcesso.trim()} className="mt-5">
+          <Plus size={18} weight="bold" />
+          Adicionar
+        </Button>
       </form>
 
       {processos === null ? (
@@ -299,11 +313,11 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
                     : 'Ainda não verificado — clique em "Verificar agora".'}
                   {processo.despacho_data && <> · Último despacho em {formatDate(processo.despacho_data)}</>}
                 </p>
-                {processo.cliente_email && (
+                {processo.cliente && (
                   <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                     <Envelope size={12} />
-                    Aviso para {processo.cliente_nome ? `${processo.cliente_nome} · ` : ''}
-                    {processo.cliente_email}
+                    Cliente: {processo.cliente.nome || processo.cliente.email || 'cadastrado'}
+                    {processo.cliente.email && processo.cliente.nome && ` · ${processo.cliente.email}`}
                   </p>
                 )}
               </div>
@@ -319,7 +333,7 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
                   <ArrowsClockwise size={14} className={verificandoId === processo.id ? 'animate-spin' : ''} />
                   {verificandoId === processo.id ? 'Verificando…' : 'Verificar agora'}
                 </Button>
-                {processo.cliente_email && (
+                {processo.cliente?.email && (
                   <Button
                     type="button"
                     variant="ghost"
