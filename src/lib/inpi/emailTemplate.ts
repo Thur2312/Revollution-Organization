@@ -23,18 +23,15 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;')
 }
 
-export function processoInpiAtualizadoEmailHtml(
-  processo: ProcessoInpi,
-  cliente: Cliente | null,
-  workspaceId: string,
-  siteUrl: string
-): string {
+export function processoInpiAtualizadoEmailHtml(processo: ProcessoInpi, cliente: Cliente | null, siteUrl: string): string {
   const titulo = escapeHtml(processo.apelido || processo.nome || processo.numero_processo)
   const primeiroNome = cliente?.nome ? escapeHtml(cliente.nome.split(' ')[0]) : null
   const situacao = processo.situacao ? escapeHtml(processo.situacao) : null
   const despacho = processo.despacho_descricao ? escapeHtml(processo.despacho_descricao) : null
   const logoUrl = `${siteUrl.replace(/\/$/, '')}/brand/revollution-logo-full.png`
-  const linkHistorico = `${siteUrl.replace(/\/$/, '')}/app/workspace/${workspaceId}/processos/${processo.id}`
+  // Link público (sem login) — quem recebe o e-mail é o cliente, que não
+  // tem conta no Revollution nem acesso ao workspace.
+  const linkHistorico = `${siteUrl.replace(/\/$/, '')}/processo/${processo.id}`
 
   return `<!doctype html>
 <html lang="pt-BR">

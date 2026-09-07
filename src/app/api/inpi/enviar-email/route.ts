@@ -41,7 +41,7 @@ export async function POST(request: Request) {
   const emailEnviado = await enviarEmail({
     para: processoTyped.cliente.email,
     assunto: `Atualização no processo ${processoTyped.numero_processo} do INPI`,
-    html: processoInpiAtualizadoEmailHtml(processoTyped, processoTyped.cliente, processoTyped.workspace_id, siteUrl),
+    html: processoInpiAtualizadoEmailHtml(processoTyped, processoTyped.cliente, siteUrl),
   })
 
   if (!emailEnviado) {

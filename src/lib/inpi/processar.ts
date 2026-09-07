@@ -69,7 +69,7 @@ export async function processarResultadoInpi(
     emailEnviado = await enviarEmail({
       para: processo.cliente.email,
       assunto: `Atualização no processo ${processoAtualizado.numero_processo} do INPI`,
-      html: processoInpiAtualizadoEmailHtml(processoAtualizado, processo.cliente, processo.workspace_id, siteUrl),
+      html: processoInpiAtualizadoEmailHtml(processoAtualizado, processo.cliente, siteUrl),
     })
   }
 

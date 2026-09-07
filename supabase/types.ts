@@ -543,6 +543,83 @@ export interface EmailTemplateUpdate {
 }
 
 // ---------------------------------------------------------------------------
+// google_calendar_connections — tokens OAuth do Google Agenda. Nunca lido
+// pelo client (RLS sem nenhuma policy pra authenticated); só as rotas
+// server-side em src/app/api/auth/google/* e src/app/api/agenda/* tocam
+// essa tabela, com a service role.
+// ---------------------------------------------------------------------------
+
+export interface GoogleCalendarConnection {
+  id: string;
+  user_id: string;
+  google_email: string | null;
+  access_token: string;
+  refresh_token: string;
+  token_expiry: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GoogleCalendarConnectionInsert {
+  user_id: string;
+  google_email?: string | null;
+  access_token: string;
+  refresh_token: string;
+  token_expiry: string;
+}
+
+export interface GoogleCalendarConnectionUpdate {
+  google_email?: string | null;
+  access_token?: string;
+  refresh_token?: string;
+  token_expiry?: string;
+}
+
+// ---------------------------------------------------------------------------
+// compromissos — agenda por workspace, sincronizada com o Google Agenda
+// de cada colaborador (ver src/lib/google/calendar.ts).
+// ---------------------------------------------------------------------------
+
+export type StatusSincronizacaoCompromisso = 'pendente' | 'sincronizado' | 'falha' | 'nao_conectado';
+
+export interface Compromisso {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  titulo: string;
+  descricao: string | null;
+  local: string | null;
+  inicio: string;
+  fim: string;
+  google_event_id: string | null;
+  status_sincronizacao: StatusSincronizacaoCompromisso;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CompromissoInsert {
+  workspace_id: string;
+  user_id: string;
+  titulo: string;
+  descricao?: string | null;
+  local?: string | null;
+  inicio: string;
+  fim: string;
+  created_by: string;
+}
+
+export interface CompromissoUpdate {
+  titulo?: string;
+  descricao?: string | null;
+  local?: string | null;
+  inicio?: string;
+  fim?: string;
+  google_event_id?: string | null;
+  status_sincronizacao?: StatusSincronizacaoCompromisso;
+}
+
+// ---------------------------------------------------------------------------
 // Database — pass to createClient<Database>() from @supabase/supabase-js
 // for a fully typed client without running `supabase gen types`.
 // ---------------------------------------------------------------------------
@@ -644,6 +721,16 @@ export interface Database {
         Row: EmailTemplate;
         Insert: EmailTemplateInsert;
         Update: EmailTemplateUpdate;
+      };
+      google_calendar_connections: {
+        Row: GoogleCalendarConnection;
+        Insert: GoogleCalendarConnectionInsert;
+        Update: GoogleCalendarConnectionUpdate;
+      };
+      compromissos: {
+        Row: Compromisso;
+        Insert: CompromissoInsert;
+        Update: CompromissoUpdate;
       };
     };
     Functions: {
