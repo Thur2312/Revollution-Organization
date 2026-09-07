@@ -511,6 +511,38 @@ export interface EventoProcessoInpiUpdate {
 }
 
 // ---------------------------------------------------------------------------
+// email_templates — modelo de e-mail customizável por workspace (aba
+// Prospecção). `chave` distingue tipos de modelo; hoje só existe
+// 'prospeccao'.
+// ---------------------------------------------------------------------------
+
+export interface EmailTemplate {
+  id: string;
+  workspace_id: string;
+  chave: string;
+  assunto: string;
+  corpo: string;
+  updated_by: string | null;
+  updated_at: string;
+  created_at: string;
+}
+
+export interface EmailTemplateInsert {
+  workspace_id: string;
+  chave?: string;
+  assunto: string;
+  corpo: string;
+  updated_by: string;
+}
+
+export interface EmailTemplateUpdate {
+  assunto?: string;
+  corpo?: string;
+  updated_by?: string;
+  updated_at?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Database — pass to createClient<Database>() from @supabase/supabase-js
 // for a fully typed client without running `supabase gen types`.
 // ---------------------------------------------------------------------------
@@ -607,6 +639,11 @@ export interface Database {
         Row: EventoProcessoInpi;
         Insert: never; // created only by the /api/inpi verification route (service role)
         Update: EventoProcessoInpiUpdate;
+      };
+      email_templates: {
+        Row: EmailTemplate;
+        Insert: EmailTemplateInsert;
+        Update: EmailTemplateUpdate;
       };
     };
     Functions: {

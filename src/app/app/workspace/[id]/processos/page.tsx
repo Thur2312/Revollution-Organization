@@ -333,18 +333,17 @@ export default function WorkspaceProcessosPage({ params }: { params: { id: strin
                   <ArrowsClockwise size={14} className={verificandoId === processo.id ? 'animate-spin' : ''} />
                   {verificandoId === processo.id ? 'Verificando…' : 'Verificar agora'}
                 </Button>
-                {processo.cliente?.email && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={enviandoEmailId === processo.id}
-                    onClick={() => handleEnviarEmail(processo)}
-                  >
-                    <Envelope size={14} />
-                    {enviandoEmailId === processo.id ? 'Enviando…' : 'Enviar e-mail'}
-                  </Button>
-                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={!processo.cliente?.email || enviandoEmailId === processo.id}
+                  title={!processo.cliente?.email ? 'Vincule um cliente com e-mail pra poder enviar' : undefined}
+                  onClick={() => handleEnviarEmail(processo)}
+                >
+                  <Envelope size={14} />
+                  {enviandoEmailId === processo.id ? 'Enviando…' : 'Enviar e-mail'}
+                </Button>
                 <Link href={`/app/workspace/${workspaceId}/processos/${processo.id}`}>
                   <Button type="button" variant="ghost" size="sm">
                     Ver histórico

@@ -12,6 +12,7 @@ import {
   Envelope,
   Gauge,
   Kanban,
+  Megaphone,
   Moon,
   SignOut,
   SquaresFour,
@@ -183,6 +184,15 @@ export function Sidebar({ userId, isPlatformAdmin = false }: { userId: string; i
         >
           <Stamp size={18} />
         </Link>
+        <Link
+          href="/app/emails"
+          title="Prospecção"
+          className={`rounded-md p-1.5 ${
+            pathname.includes('/emails') ? 'text-accent' : 'text-muted-foreground hover:bg-surface hover:text-foreground'
+          }`}
+        >
+          <Megaphone size={18} />
+        </Link>
         {isPlatformAdmin && (
           <>
             <Link
@@ -286,6 +296,10 @@ export function Sidebar({ userId, isPlatformAdmin = false }: { userId: string; i
         <Link href="/app/processos" className={navClasses(pathname.includes('/processos'))}>
           <Stamp size={17} />
           Processos
+        </Link>
+        <Link href="/app/emails" className={navClasses(pathname.includes('/emails'))}>
+          <Megaphone size={17} />
+          Prospecção
         </Link>
         {isPlatformAdmin && (
           <>
