@@ -472,7 +472,14 @@ export function CardModal({
   async function uploadAttachment(file: File) {
     setUploading(true)
     setError(null)
-    const path = `${workspaceId}/${card.id}/${Date.now()}-${file.name}`
+    // Supabase Storage rejects object keys with spaces/accents/parentheses
+    // etc. ("Invalid key") — sanitize just the key, keep file.name as-is
+    // for the file_name column so the display/download name stays intact.
+    const nomeSanitizado = file.name
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '') // combining diacritics left behind by NFD (á -> a + ´)
+      .replace(/[^a-zA-Z0-9.\-]+/g, '_')
+    const path = `${workspaceId}/${card.id}/${Date.now()}-${nomeSanitizado}`
     const { error: uploadError } = await supabase.storage.from('attachments').upload(path, file)
     if (uploadError) {
       setUploading(false)
