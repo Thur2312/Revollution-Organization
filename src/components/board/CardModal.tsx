@@ -6,8 +6,10 @@ import {
   Check,
   Copy,
   CurrencyDollar,
+  DownloadSimple,
   Envelope,
   Flag,
+  Image as ImageIcon,
   Paperclip,
   Phone,
   Plus,
@@ -97,6 +99,16 @@ function formatBytes(bytes: number | null) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+// Supabase Storage rejects object keys with spaces/accents/parentheses
+// etc. ("Invalid key") — sanitize just the storage key, never file_name
+// (kept as-is so the displayed/downloaded name stays intact).
+function sanitizeFileName(name: string) {
+  return name
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // combining diacritics left behind by NFD (á -> a + ´)
+    .replace(/[^a-zA-Z0-9.\-]+/g, '_')
+}
+
 export function CardModal({
   card,
   workspaceId,
@@ -138,6 +150,9 @@ export function CardModal({
   const commentBoxRef = useRef<HTMLTextAreaElement>(null)
   const [posting, setPosting] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [pendingCommentImage, setPendingCommentImage] = useState<File | null>(null)
+  const [pendingCommentImagePreview, setPendingCommentImagePreview] = useState<string | null>(null)
+  const [commentImageUrls, setCommentImageUrls] = useState<Record<string, string>>({})
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [members, setMembers] = useState<WorkspaceMember[]>([])
   const [newLabel, setNewLabel] = useState('')
@@ -249,7 +264,9 @@ export function CardModal({
 
     const checklistList = (checklistRes.data ?? []) as Checklist[]
     setChecklists(checklistList)
-    setAttachments((attachmentRes.data ?? []) as Attachment[])
+    const attachmentList = (attachmentRes.data ?? []) as Attachment[]
+    setAttachments(attachmentList)
+    loadCommentImageUrls(attachmentList)
 
     if (checklistList.length > 0) {
       const { data: items } = await supabase
@@ -278,6 +295,24 @@ export function CardModal({
     }
 
     setLoading(false)
+  }
+
+  // Signed URLs for inline thumbnails of photos attached to a comment (the
+  // bucket is private, so an <img> can't just point at storage_path). The
+  // generic Anexos list doesn't need this — those are opened on click, not
+  // shown inline.
+  async function loadCommentImageUrls(list: Attachment[]) {
+    const imagens = list.filter((a) => a.comment_id && a.mime_type?.startsWith('image/'))
+    if (imagens.length === 0) return
+    const { data, error } = await supabase.storage
+      .from('attachments')
+      .createSignedUrls(imagens.map((a) => a.storage_path), 3600)
+    if (error || !data) return
+    const proximo: Record<string, string> = {}
+    data.forEach((item, i) => {
+      if (item.signedUrl) proximo[imagens[i].id] = item.signedUrl
+    })
+    setCommentImageUrls((prev) => ({ ...prev, ...proximo }))
   }
 
   async function fetchActivity() {
@@ -448,23 +483,82 @@ export function CardModal({
       ? members.filter((m) => m.name.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 5)
       : []
 
+  function handlePickCommentImage(file: File) {
+    if (!file.type.startsWith('image/')) {
+      setError('Só é possível anexar imagens ao comentário.')
+      return
+    }
+    if (pendingCommentImagePreview) URL.revokeObjectURL(pendingCommentImagePreview)
+    setPendingCommentImage(file)
+    setPendingCommentImagePreview(URL.createObjectURL(file))
+  }
+
+  function removePendingCommentImage() {
+    if (pendingCommentImagePreview) URL.revokeObjectURL(pendingCommentImagePreview)
+    setPendingCommentImage(null)
+    setPendingCommentImagePreview(null)
+  }
+
   async function postComment(e: React.FormEvent) {
     e.preventDefault()
-    if (!newComment.trim()) return
+    if (!newComment.trim() && !pendingCommentImage) return
     setPosting(true)
     const { data, error } = await supabase
       .from('comments')
       .insert({ card_id: card.id, user_id: userId, text: newComment.trim() })
       .select()
       .single()
-    setPosting(false)
-    if (error) return setError(error.message)
-    setComments((prev) => [...prev, { ...(data as Comment), authorName: 'Você' }])
+    if (error) {
+      setPosting(false)
+      return setError(error.message)
+    }
+    const commentRow = data as Comment
+    setComments((prev) => [...prev, { ...commentRow, authorName: 'Você' }])
     setNewComment('')
+
+    if (pendingCommentImage) {
+      const file = pendingCommentImage
+      const path = `${workspaceId}/${card.id}/comments/${Date.now()}-${sanitizeFileName(file.name)}`
+      const { error: uploadError } = await supabase.storage.from('attachments').upload(path, file)
+      if (uploadError) {
+        setError(`Comentário enviado, mas a foto falhou: ${uploadError.message}`)
+      } else {
+        const { data: attachmentData, error: attachmentError } = await supabase
+          .from('attachments')
+          .insert({
+            card_id: card.id,
+            comment_id: commentRow.id,
+            storage_path: path,
+            file_name: file.name,
+            mime_type: file.type || null,
+            size_bytes: file.size,
+            uploaded_by: userId,
+          })
+          .select()
+          .single()
+        if (attachmentError) {
+          setError(`Comentário enviado, mas a foto falhou: ${attachmentError.message}`)
+        } else {
+          const attachment = attachmentData as Attachment
+          setAttachments((prev) => [...prev, attachment])
+          loadCommentImageUrls([attachment])
+        }
+      }
+      removePendingCommentImage()
+    }
+
+    setPosting(false)
   }
 
   async function deleteComment(id: string) {
     setComments((prev) => prev.filter((c) => c.id !== id))
+    // The comment's photo attachment row cascades on delete, but Storage
+    // objects don't — remove those first or they leak in the bucket.
+    const fotosDoComentario = attachments.filter((a) => a.comment_id === id)
+    if (fotosDoComentario.length > 0) {
+      setAttachments((prev) => prev.filter((a) => a.comment_id !== id))
+      await supabase.storage.from('attachments').remove(fotosDoComentario.map((a) => a.storage_path))
+    }
     const { error } = await supabase.from('comments').delete().eq('id', id)
     if (error) setError(error.message)
   }
@@ -472,14 +566,7 @@ export function CardModal({
   async function uploadAttachment(file: File) {
     setUploading(true)
     setError(null)
-    // Supabase Storage rejects object keys with spaces/accents/parentheses
-    // etc. ("Invalid key") — sanitize just the key, keep file.name as-is
-    // for the file_name column so the display/download name stays intact.
-    const nomeSanitizado = file.name
-      .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '') // combining diacritics left behind by NFD (á -> a + ´)
-      .replace(/[^a-zA-Z0-9.\-]+/g, '_')
-    const path = `${workspaceId}/${card.id}/${Date.now()}-${nomeSanitizado}`
+    const path = `${workspaceId}/${card.id}/${Date.now()}-${sanitizeFileName(file.name)}`
     const { error: uploadError } = await supabase.storage.from('attachments').upload(path, file)
     if (uploadError) {
       setUploading(false)
@@ -506,6 +593,29 @@ export function CardModal({
     const { data, error } = await supabase.storage.from('attachments').createSignedUrl(attachment.storage_path, 60)
     if (error || !data) return setError(error?.message ?? 'Não foi possível abrir o anexo')
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  // Fetches the file and saves it via a synthetic <a download>, instead of
+  // just opening the signed URL in a new tab — a browser tab showing an
+  // image isn't the same as it landing in Downloads, which is what "baixar"
+  // implies (especially for photos attached to comments).
+  async function downloadAttachment(attachment: Attachment) {
+    const { data, error } = await supabase.storage.from('attachments').createSignedUrl(attachment.storage_path, 60)
+    if (error || !data) return setError(error?.message ?? 'Não foi possível baixar o anexo')
+    try {
+      const resposta = await fetch(data.signedUrl)
+      const blob = await resposta.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = attachment.file_name
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      setError('Não foi possível baixar o anexo.')
+    }
   }
 
   async function deleteAttachment(attachment: Attachment) {
@@ -875,11 +985,47 @@ export function CardModal({
                       )}
                     </div>
                   </div>
-                  <p className="whitespace-pre-wrap text-sm text-foreground">{c.text}</p>
+                  {c.text && <p className="whitespace-pre-wrap text-sm text-foreground">{c.text}</p>}
+                  {attachments
+                    .filter((a) => a.comment_id === c.id)
+                    .map((a) => (
+                      <div key={a.id} className="mt-2 inline-flex max-w-[220px] flex-col gap-1">
+                        <div className="overflow-hidden rounded-lg border border-border">
+                          {commentImageUrls[a.id] ? (
+                            <img src={commentImageUrls[a.id]} alt={a.file_name} className="max-h-48 w-full object-cover" />
+                          ) : (
+                            <div className="flex h-24 w-full items-center justify-center bg-surface text-muted-foreground">
+                              <ImageIcon size={20} />
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => downloadAttachment(a)}
+                          className="flex items-center gap-1 self-start text-xs text-muted-foreground hover:text-accent"
+                        >
+                          <DownloadSimple size={12} />
+                          Baixar foto
+                        </button>
+                      </div>
+                    ))}
                 </div>
               ))}
             </div>
             <form onSubmit={postComment} className="flex flex-col gap-2">
+              {pendingCommentImagePreview && (
+                <div className="relative w-fit">
+                  <img src={pendingCommentImagePreview} alt="" className="h-20 w-20 rounded-lg border border-border object-cover" />
+                  <button
+                    type="button"
+                    onClick={removePendingCommentImage}
+                    aria-label="Remover foto"
+                    className="absolute -right-1.5 -top-1.5 rounded-full bg-wine p-0.5 text-wine-foreground"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              )}
               <div className="relative">
                 <textarea
                   ref={commentBoxRef}
@@ -914,13 +1060,31 @@ export function CardModal({
                   </div>
                 )}
               </div>
-              <button
-                type="submit"
-                disabled={posting || !newComment.trim()}
-                className="w-fit rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-50"
-              >
-                Comentar
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={posting || (!newComment.trim() && !pendingCommentImage)}
+                  className="w-fit rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-50"
+                >
+                  Comentar
+                </button>
+                <label
+                  title="Anexar foto"
+                  className="flex cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-accent"
+                >
+                  <ImageIcon size={16} />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) handlePickCommentImage(file)
+                      e.target.value = ''
+                    }}
+                  />
+                </label>
+              </div>
             </form>
           </section>
 

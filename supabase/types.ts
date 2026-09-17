@@ -331,6 +331,7 @@ export interface CommentUpdate {
 export interface Attachment {
   id: string;
   card_id: string;
+  comment_id: string | null;
   storage_path: string;
   file_name: string;
   mime_type: string | null;
@@ -341,6 +342,7 @@ export interface Attachment {
 
 export interface AttachmentInsert {
   card_id: string;
+  comment_id?: string | null;
   storage_path: string;
   file_name: string;
   mime_type?: string | null;
