@@ -43,6 +43,8 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [pendingRemove, setPendingRemove] = useState<Member | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [confirmBulk, setConfirmBulk] = useState(false)
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([])
   const [showResults, setShowResults] = useState(false)
   const searchBoxRef = useRef<HTMLDivElement>(null)
@@ -191,6 +193,29 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
     if (error) setError(error.message)
   }
 
+  function toggleSelected(membershipId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(membershipId)) next.delete(membershipId)
+      else next.add(membershipId)
+      return next
+    })
+  }
+
+  async function removeSelected() {
+    const ids = Array.from(selectedIds)
+    const previous = members
+    setMembers((prev) => (prev ? prev.filter((m) => !selectedIds.has(m.membershipId)) : prev))
+    setSelectedIds(new Set())
+    const { error } = await supabase.from('memberships').delete().in('id', ids)
+    if (error) {
+      setMembers(previous)
+      setError(error.message)
+    } else {
+      toast(`${ids.length} ${ids.length === 1 ? 'colaborador removido' : 'colaboradores removidos'} do workspace.`)
+    }
+  }
+
   function requestRemoveMember(membershipId: string) {
     const member = members?.find((m) => m.membershipId === membershipId) ?? null
     setPendingRemove(member)
@@ -270,7 +295,29 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
       )}
 
       <div>
-        <h2 className="mb-3 text-sm font-medium text-primary">Membros</h2>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-medium text-primary">Membros</h2>
+          {isAdmin && selectedIds.size > 0 && (
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">
+                {selectedIds.size} {selectedIds.size === 1 ? 'selecionado' : 'selecionados'}
+              </span>
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="text-xs text-muted-foreground hover:text-primary"
+              >
+                Limpar
+              </button>
+              <button
+                onClick={() => setConfirmBulk(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/20"
+              >
+                <Trash size={14} />
+                Remover selecionados
+              </button>
+            </div>
+          )}
+        </div>
         {members === null ? (
           <div className="flex flex-col gap-2" aria-label="Carregando membros">
             {[0, 1].map((i) => (
@@ -281,6 +328,17 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
           <ul className="divide-y divide-border rounded-xl border border-border bg-background">
             {members.map((m) => (
               <li key={m.membershipId} className="flex items-center gap-3.5 px-5 py-3.5">
+                {isAdmin && m.role !== 'owner' && m.userId !== userId ? (
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(m.membershipId)}
+                    onChange={() => toggleSelected(m.membershipId)}
+                    aria-label={`Selecionar ${m.name}`}
+                    className="h-4 w-4 shrink-0 accent-[var(--accent,currentColor)]"
+                  />
+                ) : (
+                  isAdmin && <span className="h-4 w-4 shrink-0" aria-hidden />
+                )}
                 <Avatar name={m.name} imageUrl={m.avatarUrl} size={32} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-foreground">{m.name}</p>
@@ -341,6 +399,19 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
             ))}
           </ul>
         </div>
+      )}
+
+      {confirmBulk && (
+        <ConfirmDialog
+          title={`Remover ${selectedIds.size} ${selectedIds.size === 1 ? 'colaborador' : 'colaboradores'} do workspace?`}
+          description="Eles perdem acesso a todos os boards deste workspace imediatamente."
+          confirmLabel="Remover"
+          onCancel={() => setConfirmBulk(false)}
+          onConfirm={() => {
+            removeSelected()
+            setConfirmBulk(false)
+          }}
+        />
       )}
 
       {pendingRemove && (
