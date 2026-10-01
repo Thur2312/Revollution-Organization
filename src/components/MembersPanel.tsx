@@ -1,7 +1,9 @@
 "use client"
 import { useEffect, useRef, useState } from 'react'
-import { Trash, UserPlus } from '@phosphor-icons/react/dist/ssr'
+import { useRouter } from 'next/navigation'
+import { Trash, UserPlus, Warning } from '@phosphor-icons/react/dist/ssr'
 import { supabase } from '../lib/supabaseClient'
+import { refreshSidebar } from '../lib/sidebarRefresh'
 import { Avatar } from './ui/Avatar'
 import { Field } from './ui/Field'
 import { Select } from './ui/Select'
@@ -33,7 +35,16 @@ const roleLabel: Record<MemberRole, string> = {
   guest: 'Convidado',
 }
 
-export function MembersPanel({ workspaceId, userId }: { workspaceId: string; userId: string }) {
+export function MembersPanel({
+  workspaceId,
+  userId,
+  workspaceName,
+}: {
+  workspaceId: string
+  userId: string
+  workspaceName: string
+}) {
+  const router = useRouter()
   const [members, setMembers] = useState<Member[] | null>(null)
   const [invites, setInvites] = useState<PendingInvite[]>([])
   const [myRole, setMyRole] = useState<MemberRole | null>(null)
@@ -46,6 +57,8 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([])
   const [showResults, setShowResults] = useState(false)
   const searchBoxRef = useRef<HTMLDivElement>(null)
+  const [confirmingDeleteWorkspace, setConfirmingDeleteWorkspace] = useState(false)
+  const [deletingWorkspace, setDeletingWorkspace] = useState(false)
 
   const isAdmin = myRole === 'owner' || myRole === 'admin'
   const toast = useToast()
@@ -203,6 +216,23 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
     else toast('Convite cancelado.')
   }
 
+  // Boards/cards/checklists/comments/attachments, CRM, processos do INPI,
+  // clientes, modelos de e-mail — tudo isso referencia workspace_id com
+  // "on delete cascade", então apagar a linha da workspace já apaga o
+  // resto sozinho. RLS (workspaces_delete_owner) só deixa o owner chamar
+  // isso de qualquer forma, mas o botão já fica escondido pra quem não é.
+  async function deleteWorkspace() {
+    setDeletingWorkspace(true)
+    const { error } = await supabase.from('workspaces').delete().eq('id', workspaceId)
+    if (error) {
+      setDeletingWorkspace(false)
+      setConfirmingDeleteWorkspace(false)
+      return setError(error.message)
+    }
+    refreshSidebar()
+    router.push('/app')
+  }
+
   return (
     <div className="flex flex-col gap-8">
       {isAdmin && (
@@ -343,6 +373,23 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
         </div>
       )}
 
+      {myRole === 'owner' && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-5">
+          <h2 className="flex items-center gap-1.5 text-sm font-medium text-destructive">
+            <Warning size={16} />
+            Zona de risco
+          </h2>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            Excluir este workspace apaga todos os boards, cards, o CRM, processos do INPI e clientes cadastrados
+            nele — pra sempre, sem como desfazer.
+          </p>
+          <Button variant="destructive" size="sm" className="mt-3" onClick={() => setConfirmingDeleteWorkspace(true)}>
+            <Trash size={14} />
+            Excluir workspace
+          </Button>
+        </div>
+      )}
+
       {pendingRemove && (
         <ConfirmDialog
           title={`Remover ${pendingRemove.name} do workspace?`}
@@ -354,6 +401,16 @@ export function MembersPanel({ workspaceId, userId }: { workspaceId: string; use
             toast(`${pendingRemove.name} removido(a) do workspace.`)
             setPendingRemove(null)
           }}
+        />
+      )}
+
+      {confirmingDeleteWorkspace && (
+        <ConfirmDialog
+          title={`Excluir o workspace "${workspaceName}"?`}
+          description="Todos os boards, cards, o CRM, processos do INPI e clientes cadastrados nele serão apagados pra sempre. Essa ação não pode ser desfeita."
+          confirmLabel={deletingWorkspace ? 'Excluindo…' : 'Excluir workspace'}
+          onCancel={() => setConfirmingDeleteWorkspace(false)}
+          onConfirm={deleteWorkspace}
         />
       )}
     </div>

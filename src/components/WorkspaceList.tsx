@@ -1,11 +1,13 @@
 "use client"
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { SquaresFour, Plus, UsersThree } from '@phosphor-icons/react/dist/ssr'
+import { SquaresFour, Plus, Trash, UsersThree } from '@phosphor-icons/react/dist/ssr'
 import { supabase } from '../lib/supabaseClient'
 import { refreshSidebar } from '../lib/sidebarRefresh'
 import { Field } from './ui/Field'
 import { Button } from './ui/Button'
+import { ConfirmDialog } from './ui/ConfirmDialog'
+import { useToast } from './ui/ToastProvider'
 import type { MemberRole } from '../../supabase/types'
 
 type Workspace = {
@@ -39,6 +41,9 @@ export default function WorkspaceList({ userId }: { userId: string }) {
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<Workspace | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const toast = useToast()
 
   useEffect(() => {
     if (!userId) return
@@ -104,6 +109,17 @@ export default function WorkspaceList({ userId }: { userId: string }) {
     setMeta(nextMeta)
   }
 
+  async function deleteWorkspace(workspace: Workspace) {
+    setDeleting(true)
+    const { error } = await supabase.from('workspaces').delete().eq('id', workspace.id)
+    setDeleting(false)
+    setPendingDelete(null)
+    if (error) return setError(error.message)
+    setWorkspaces((prev) => (prev ? prev.filter((w) => w.id !== workspace.id) : prev))
+    toast(`Workspace "${workspace.name}" excluído.`)
+    refreshSidebar()
+  }
+
   async function createWorkspace(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return
@@ -166,10 +182,10 @@ export default function WorkspaceList({ userId }: { userId: string }) {
             const m = meta[w.id]
             const boardCount = m?.boardCount ?? 0
             return (
-              <li key={w.id}>
+              <li key={w.id} className="group relative">
                 <Link
                   href={`/app/workspace/${w.id}`}
-                  className="flex items-center gap-3.5 px-5 py-4 transition-colors hover:bg-surface"
+                  className="flex items-center gap-3.5 px-5 py-4 pr-12 transition-colors hover:bg-surface"
                 >
                   <span
                     className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-semibold ${monogramStyle(w.id)}`}
@@ -201,10 +217,32 @@ export default function WorkspaceList({ userId }: { userId: string }) {
                   </div>
                   <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">Ver boards →</span>
                 </Link>
+                {m?.role === 'owner' && (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault()
+                      setPendingDelete(w)
+                    }}
+                    aria-label={`Excluir workspace ${w.name}`}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100"
+                  >
+                    <Trash size={16} />
+                  </button>
+                )}
               </li>
             )
           })}
         </ul>
+      )}
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title={`Excluir o workspace "${pendingDelete.name}"?`}
+          description="Todos os boards, cards, o CRM, processos do INPI e clientes cadastrados nele serão apagados pra sempre. Essa ação não pode ser desfeita."
+          confirmLabel={deleting ? 'Excluindo…' : 'Excluir workspace'}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => deleteWorkspace(pendingDelete)}
+        />
       )}
     </div>
   )
